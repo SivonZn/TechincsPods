@@ -20,6 +20,7 @@
     <string name="pod_case">Case</string>
     <string name="batt_left_pod">Left</string>
     <string name="batt_right_pod">Right</string>
+    <string name="charging">Charging</string>
     <string name="waiting_for_pod">Waiting for Technics Earphones Connection...</string>
     <string name="select_device">Select Bluetooth Device</string>
     <string name="no_paired_devices">No paired devices found. Please pair your earphones in system Bluetooth settings first.</string>
