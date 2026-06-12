@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,12 +79,6 @@ private fun TechnicsBatteryItem(
 ) {
     val isConnected = pod?.isConnected == true
     val battery = pod?.battery ?: 0
-    val chargingText = stringResource(R.string.charging)
-    val batteryText = if (isConnected) {
-        if (pod.isCharging) "$battery% $chargingText" else "$battery%"
-    } else {
-        "-"
-    }
 
     Column(
         modifier = modifier,
@@ -96,17 +91,85 @@ private fun TechnicsBatteryItem(
             contentScale = ContentScale.Fit
         )
         Spacer(modifier = Modifier.height(if (compact) 4.dp else 8.dp))
-        Text(
-            text = batteryText,
-            fontSize = if (compact) 12.sp else 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center
-        )
+        if (isConnected) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Image(
+                    painter = painterResource(getBatteryIconRes(battery, pod.isCharging)),
+                    contentDescription = null,
+                    modifier = Modifier.size(
+                        width = if (compact) 24.dp else 28.dp,
+                        height = if (compact) 13.dp else 15.dp
+                    ),
+                    contentScale = ContentScale.Fit
+                )
+                Spacer(modifier = Modifier.width(if (compact) 4.dp else 5.dp))
+                Text(
+                    text = "$battery%",
+                    fontSize = if (compact) 12.sp else 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
+            }
+        } else {
+            Text(
+                text = "-",
+                fontSize = if (compact) 12.sp else 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
+            )
+        }
         Text(
             text = label,
             fontSize = if (compact) 11.sp else 12.sp,
             color = Color.Gray,
             textAlign = TextAlign.Center
         )
+    }
+}
+
+@DrawableRes
+private fun getBatteryIconRes(level: Int, isCharging: Boolean): Int {
+    val index = when {
+        level <= 10 -> 1
+        level <= 20 -> 2
+        level <= 30 -> 3
+        level <= 40 -> 4
+        level <= 50 -> 5
+        level <= 60 -> 6
+        level <= 70 -> 7
+        level <= 80 -> 8
+        level <= 90 -> 9
+        else -> 10
+    }
+
+    return if (isCharging) {
+        when (index) {
+            1 -> R.drawable.charge_1
+            2 -> R.drawable.charge_2
+            3 -> R.drawable.charge_3
+            4 -> R.drawable.charge_4
+            5 -> R.drawable.charge_5
+            6 -> R.drawable.charge_6
+            7 -> R.drawable.charge_7
+            8 -> R.drawable.charge_8
+            9 -> R.drawable.charge_9
+            else -> R.drawable.charge_10
+        }
+    } else {
+        when (index) {
+            1 -> R.drawable.common_1
+            2 -> R.drawable.common_2
+            3 -> R.drawable.common_3
+            4 -> R.drawable.common_4
+            5 -> R.drawable.common_5
+            6 -> R.drawable.common_6
+            7 -> R.drawable.common_7
+            8 -> R.drawable.common_8
+            9 -> R.drawable.common_9
+            else -> R.drawable.common_10
+        }
     }
 }
