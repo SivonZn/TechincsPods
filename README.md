@@ -1,4 +1,4 @@
-# OppoPods
+# TechnicsPods
 
 [English](#english) | [中文](#中文)
 
@@ -6,7 +6,7 @@
 
 ## English
 
-Xposed module that brings system-level OPPO earphone control to Xiaomi HyperOS devices.
+Xposed module that brings system-level Technics earphone control to Xiaomi HyperOS devices.
 
 Based on [HyperPods](https://github.com/Art-Chen/HyperPods) by Art_Chen.
 
@@ -28,18 +28,18 @@ Based on [HyperPods](https://github.com/Art-Chen/HyperPods) by Art_Chen.
 
 ### How It Works
 
-OppoPods hooks into four packages:
+TechnicsPods hooks into four packages:
 
 | Process | Purpose |
 |---------|---------|
-| `com.android.bluetooth` | Detect OPPO earphone via A2DP, establish RFCOMM via the selected UUID or channel mode, send/receive protocol packets |
+| `com.android.bluetooth` | Detect Technics earphone via A2DP, establish RFCOMM via the selected UUID or channel mode, send/receive protocol packets |
 | `com.milink.service` | Mirror headset ANC and battery state into HyperOS headset runtime |
 | `com.xiaomi.bluetooth` | Show Focus Island battery popup, create persistent notification |
 | `com.android.settings` | Sync headset settings page state and ANC commands |
 
 ### Protocol
 
-Communication uses Bluetooth Classic **RFCOMM**. The connection method can be selected in settings: `UUID` tries the HeyMelody SPP UUIDs `00001107-D102-11E1-9B23-00025B00A5A5` and `0000079A-D102-11E1-9B23-00025B00A5A5`; `Channel 15` uses the fixed RFCOMM channel directly. Packet format:
+Communication uses Bluetooth Classic **RFCOMM**. The connection method can be selected in settings: `UUID` tries the Technics/Airoha SPP UUIDs `00001107-D102-11E1-9B23-00025B00A5A5` and `0000079A-D102-11E1-9B23-00025B00A5A5`; `Channel 15` uses the fixed RFCOMM channel directly. Packet format:
 
 ```
 AA [TotalLen] 00 00 [Cmd 2B LE] [Seq] [PayLen 2B LE] [Payload...]
@@ -71,7 +71,7 @@ AA 13 00 00 0D 01 00 0C 00 0B 05 04 0B 11 13 18 06 1B 1C 27 28
 1. Install the APK
 2. Enable the module in LSPosed with scope: `com.android.bluetooth`, `com.milink.service`, `com.xiaomi.bluetooth`, `com.android.settings`
 3. Reboot
-4. Connect your OPPO earphones via Bluetooth
+4. Connect your Technics earphones via Bluetooth
 
 ### Credits
 
@@ -87,7 +87,7 @@ GPL-3.0
 
 ## 中文
 
-为小米 HyperOS 设备提供系统级 OPPO 耳机控制的 Xposed 模块。
+为小米 HyperOS 设备提供系统级 Technics 耳机控制的 Xposed 模块。
 
 基于 Art_Chen 的 [HyperPods](https://github.com/Art-Chen/HyperPods)。
 
@@ -109,37 +109,30 @@ GPL-3.0
 
 ### 工作原理
 
-OppoPods 挂钩四个包：
+TechnicsPods 挂钩四个包：
 
 | 进程 | 用途 |
 |------|------|
-| `com.android.bluetooth` | 通过 A2DP 检测 OPPO 耳机，按设置选择 UUID 或通道模式建立 RFCOMM，收发协议包 |
+| `com.android.bluetooth` | 通过 A2DP 检测 Technics 耳机，按设置选择 UUID 或通道模式建立 RFCOMM，收发协议包 |
 | `com.milink.service` | 将耳机电量和降噪状态同步到 HyperOS 耳机运行时 |
 | `com.xiaomi.bluetooth` | 焦点岛电量弹窗、创建常驻通知 |
 | `com.android.settings` | 同步系统耳机设置页状态和降噪命令 |
 
 ### 协议
 
-通信使用经典蓝牙 **RFCOMM**。连接方式可在设置中选择：`UUID` 会尝试欢律 SPP UUID `00001107-D102-11E1-9B23-00025B00A5A5` 和 `0000079A-D102-11E1-9B23-00025B00A5A5`；`通道 15` 会直接使用固定 RFCOMM 通道。数据包格式：
+通信使用经典蓝牙 **RFCOMM**。连接方式可在设置中选择：`UUID` 会尝试 Technics/Airoha SPP UUID `00000000-0000-0000-0099-AABBCCDDEEFF` 和标准 SPP UUID `00001101-0000-1000-8000-00805F9B34FB`；`通道 15` 会直接使用固定 RFCOMM 通道。数据包使用 Airoha RACE 格式：
 
 ```
-AA [总长度] 00 00 [命令 2字节小端] [序列号] [载荷长度 2字节小端] [载荷...]
+05 [类型] [长度 2字节小端] [Race ID 2字节小端] [载荷...]
 ```
 
 | 功能 | 命令 | 载荷 |
 |------|------|------|
-| 降噪控制 | `0x0404` | `01 01 <模式>` — `01`=关闭, `02`=降噪, `04`=通透, `00 08`=自适应 |
-| 游戏模式设置 | `0x0403` | `28 01`=开, `28 00`=关 |
-| 电量查询 | `0x0106` | （空） |
-| 电量响应 | `0x8106` | `[索引, 原始值]` 对 — 电量=`val & 0x7F`，充电中=`(val & 0x80) != 0` |
-| 电量主动上报 | `0x0204` | `01 <数量> [索引, 状态值]...` — 耳机主动推送，编码同上 |
-| 批量状态查询 | `0x010D` | 固定数据包（见下），自带唤醒权重，无需前置指令 |
-| 批量状态响应 | `0x810D` | 键值流；查找字节 `0x28`，下一字节为游戏模式状态（`01`=开, `00`=关） |
+| 左/右耳电量查询 | `0x0CD6` | `00`=agent, `01`=client |
+| 充电仓电量查询 | `0x0040` | （空） |
+| 电量响应 | `0x0CD6` / `0x0040` | `status=00` 成功；左右耳从响应偏移 `7/8` 读取角色和电量，充电仓从偏移 `7` 读取电量 |
 
-**批量状态查询（固定数据）：**
-```
-AA 13 00 00 0D 01 00 0C 00 0B 05 04 0B 11 13 18 06 1B 1C 27 28
-```
+当前版本只接入 Technics 电量读取与 HyperOS 灵动岛/通知显示。降噪、游戏模式等控制项暂不向耳机发送旧项目的 OPPO 协议包。
 
 ### 构建
 
@@ -152,7 +145,7 @@ AA 13 00 00 0D 01 00 0C 00 0B 05 04 0B 11 13 18 06 1B 1C 27 28
 1. 安装 APK
 2. 在 LSPosed 中启用模块，作用域选择：`com.android.bluetooth`、`com.milink.service`、`com.xiaomi.bluetooth`、`com.android.settings`
 3. 重启设备
-4. 通过蓝牙连接你的 OPPO 耳机
+4. 通过蓝牙连接你的 Technics 耳机
 
 ### 致谢
 

@@ -5,7 +5,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
 
     <queries>
-        <package android:name="com.heytap.headset" />
+        <package android:name="com.panasonic.technicsaudioconnect" />
     </queries>
 
     <application
@@ -15,7 +15,7 @@
         android:extractNativeLibs="false"
         android:enableOnBackInvokedCallback="true"
         android:supportsRtl="true"
-        android:theme="@style/Theme.OppoPods">
+        android:theme="@style/Theme.TechnicsPods">
 
         <activity android:name=".MainActivity"
             android:launchMode="singleTask"
@@ -27,17 +27,17 @@
             </intent-filter>
         </activity>
         <activity android:name=".PopupActivity"
-            android:theme="@style/Theme.OppoPods.Popup"
+            android:theme="@style/Theme.TechnicsPods.Popup"
             android:taskAffinity=""
             android:excludeFromRecents="true"
             android:exported="true">
             <intent-filter>
-                <action android:name="chen.action.oppopods.show_pods_ui" />
+                <action android:name="chen.action.technicspods.show_pods_ui" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
         <activity android:name=".ConnectionPopupActivity"
-            android:theme="@style/Theme.OppoPods.Popup"
+            android:theme="@style/Theme.TechnicsPods.Popup"
             android:taskAffinity=""
             android:excludeFromRecents="true"
             android:launchMode="singleTop"
@@ -51,7 +51,7 @@
         <!-- Set your Xposed Module description -->
         <meta-data
             android:name="xposeddescription"
-            android:value="OPPO Earphones Support for Xiaomi HyperOS." />
+            android:value="Technics Earphones Support for Xiaomi HyperOS." />
 
         <!-- The minimum Xposed version number -->
         <meta-data

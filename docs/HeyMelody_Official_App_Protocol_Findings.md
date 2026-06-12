@@ -1,6 +1,6 @@
-# HeyMelody 官方 App 协议线索补充
+# Technics/Airoha 官方 App 协议线索补充
 
-本文是独立补充文档，不依赖 README 或其它旧协议笔记。这里尽量把能从 OPPO/HeyMelody 官方 App、`C:\com.heytap.headset` 私有数据目录、以及当前抓包结论互相印证的内容写全。
+本文是独立补充文档，不依赖 README 或其它旧协议笔记。这里尽量把能从 Technics/Technics/Airoha 官方 App、`C:\com.heytap.headset` 私有数据目录、以及当前抓包结论互相印证的内容写全。
 
 旧文档和项目代码没有在本文中修改。
 
@@ -16,7 +16,7 @@ C:\com.heytap.headset
 
 | 作用 | 能回答的问题 | 本次实际发现 |
 | --- | --- | --- |
-| 确认当前耳机身份 | 当前官方 App 识别的是哪款耳机、哪个颜色、哪个 product id | `067410 / OPPO Enco X3 / colorId=3 / brand=oppo / type=T1` |
+| 确认当前耳机身份 | 当前官方 App 识别的是哪款耳机、哪个颜色、哪个 product id | `067410 / Technics Enco X3 / colorId=3 / brand=oppo / type=T1` |
 | 确认连接路径 | 这台耳机在官方 App 里走 classic SPP 还是 SPP over GATT | 反馈日志显示 `BRClientDevice` 且 `isSppOverGatt=false` |
 | 关联 UI 和协议能力 | UI 里出现哪些功能，哪些功能可能触发对应设置包 | 日志出现 `SpatialAudio`、`GameSoundMutex`、`WearCheck`、`FeatureSwitch` |
 | 映射触控 UI 值 | 触控动作页面里的 function/action/earType 是什么 | `control_067410_3/config.json` 给出暂停、下一首、音量、降噪控制等功能码 |
@@ -49,7 +49,7 @@ C:\com.heytap.headset\files\melody-model-whitelist\encrypted.gz
 
 ```text
 product_id   = 067410
-product_name = OPPO Enco X3
+product_name = Technics Enco X3
 brand        = oppo
 type         = T1
 colorId      = 3
@@ -76,7 +76,7 @@ EarphoneRepository:EVENT_ID_BT_CONNECT_DEVICES_INFO
 
 ## 结论摘要
 
-- OPPO 耳机控制协议至少有两层：外层 `OPOv1` link frame，内层 `Packet`。
+- Technics 耳机控制协议至少有两层：外层 `OPOv1` link frame，内层 `Packet`。
 - 外层 `TotalLen / LinkLen` 不是固定 1 字节，而是 7-bit little-endian varint。
 - 内层 packet 的 cmd 和 payload length 都是小端序。
 - 普通请求/响应的 `Seq` 不使用 `0xFF`；`Seq=0xFF` 应作为耳机主动广播/主动上报处理。
@@ -84,7 +84,7 @@ EarphoneRepository:EVENT_ID_BT_CONNECT_DEVICES_INFO
 - 请求的响应 cmd 通常是 `cmd | 0x8000`，例如 `0x010D -> 0x810D`。
 - `BatchQuery / getFeatureSwitchStatus` 不是固定 payload。首字节是查询 feature 数量，例如 `0B` 表示后面一共 11 个 feature id。
 - 不同耳机抓到的 BatchQuery 不同是正常现象，因为官方 App 会根据白名单能力动态拼 feature id 列表。
-- 官方代码只明确暴露两个 OPPO UUID 和 GATT 派生 UUID；Java 层没有直接出现 `uihChannel5/15` 名称。按当前实测记录，两个 OPPO UUID 应对应 `uihChannel5/15`。
+- 官方代码只明确暴露两个 Technics UUID 和 GATT 派生 UUID；Java 层没有直接出现 `uihChannel5/15` 名称。按当前实测记录，两个 Technics UUID 应对应 `uihChannel5/15`。
 
 ## 外层 OPOv1 Frame
 
@@ -459,7 +459,7 @@ lea_link_Info
 当前结论：
 
 - 官方 Java 层未搜到 `uihChannel`、`channel5`、`channel15` 字样。
-- 按当前实测记录，两个 OPPO UUID 应对应 `uihChannel5` 和 `uihChannel15`。
+- 按当前实测记录，两个 Technics UUID 应对应 `uihChannel5` 和 `uihChannel15`。
 - 本文把 UUID 和官方 App 连接方式作为代码证据；`uihChannel5/15` 是实测映射，不是官方 Java 符号名。
 
 建议在实现里把两套名字同时写清楚：
@@ -469,7 +469,7 @@ lea_link_Info
 | `00001107-D102-11E1-9B23-00025B00A5A5` | `uihChannel5` / classic SPP |
 | `0000079A-D102-11E1-9B23-00025B00A5A5` | `uihChannel15` / GATT service 族 |
 
-本机私有日志里的 `067410 / OPPO Enco X3`：
+本机私有日志里的 `067410 / Technics Enco X3`：
 
 ```text
 BRClientDevice ... isSppOverGatt = false
@@ -872,7 +872,7 @@ SpatialAudioItem ... mSupportNewHeadsetSpatial: true
 SpatialAudioHelper ... spatialType: 0
 ```
 
-说明 `067410 / OPPO Enco X3` 当前官方 App UI 支持新空间音频逻辑，当前类型为 `0`。
+说明 `067410 / Technics Enco X3` 当前官方 App UI 支持新空间音频逻辑，当前类型为 `0`。
 
 ### `0x012B / 0x0423 game sound`
 
@@ -1025,7 +1025,7 @@ payload = [tapLevelSettingValue]
 
 如果它来自主动通知事件，`TapLevelSettingInfo(offset, data, true)` 只读当前值，不再读 default value。也就是说同一个数据类会按“查询响应”和“通知事件”两种场景解释 payload。
 
-## OPPO Enco X3 触控配置
+## Technics Enco X3 触控配置
 
 关键文件：
 
@@ -1094,7 +1094,7 @@ C:\com.heytap.headset\databases\melody-model.db
 
 | 表 | 发现 |
 | --- | --- |
-| `connected_device` | 当前连接过 `067410 / OPPO Enco X3` |
+| `connected_device` | 当前连接过 `067410 / Technics Enco X3` |
 | `melody_equipment` | `colorId=3`，`channelSwitch=-1`，`multiConversationSwitch=-1` |
 | `data_collect` | 记录设备版本、电量、手机型号、系统版本等 |
 | `hearing_enhancement` | 有听感增强/耳道扫描数据 JSON |
@@ -1108,7 +1108,7 @@ C:\com.heytap.headset\databases\melody-model.db
 ```text
 connected_device:
   product_id   = 067410
-  product_name = OPPO Enco X3
+  product_name = Technics Enco X3
   brand        = oppo
   type         = T1
   mac_address  = 加密后的本机 MAC
@@ -1116,7 +1116,7 @@ connected_device:
 melody_equipment:
   productId                 = 067410
   colorId                   = 3
-  name                      = OPPO Enco X3
+  name                      = Technics Enco X3
   autoOTASwitch             = -1
   channelSwitch             = -1
   multiConversationSwitch   = -1

@@ -1,15 +1,15 @@
 # 欢律蓝牙协议反编译笔记
 
-本文记录通过 JADX 查看欢律/HeyMelody 官方 App 后，对 OPPO 耳机蓝牙连接与 SPP 协议的整理。类名多为混淆名，建议把这里当成定位线索和实现依据，而不是完整协议规范。
+本文记录通过 JADX 查看欢律/Technics/Airoha 官方 App 后，对 Technics 耳机蓝牙连接与 SPP 协议的整理。类名多为混淆名，建议把这里当成定位线索和实现依据，而不是完整协议规范。
 
 ## 结论
 
 - 欢律经典蓝牙数据连接使用 `BluetoothDevice.createRfcommSocketToServiceRecord(UUID)`，不是直接写死公开 channel。
-- 已确认两个 OPPO/HeyMelody SPP UUID：
+- 已确认两个 Technics/Technics/Airoha SPP UUID：
   - `00001107-D102-11E1-9B23-00025B00A5A5`
   - `0000079A-D102-11E1-9B23-00025B00A5A5`
 - `UUID` 本身不是 channel；Android 会通过 SDP 解析到实际 RFCOMM server channel，再建立 socket。公共 API 不直接暴露这个 channel。
-- 欢律代码里有一层内层 packet：`Cmd(2 LE) + Seq/Type(1) + Len(2 LE) + Payload`。OppoPods 当前发送的是耳机 socket 上的完整外层帧：`AA + TotalLen + 00 00 + 内层 packet`。
+- 欢律代码里有一层内层 packet：`Cmd(2 LE) + Seq/Type(1) + Len(2 LE) + Payload`。TechnicsPods 当前发送的是耳机 socket 上的完整外层帧：`AA + TotalLen + 00 00 + 内层 packet`。
 - 命令响应一般用 `cmd | 0x8000` 表示，例如请求 `0x0106` 的响应是 `0x8106`。
 
 ## JADX 证据
@@ -66,7 +66,7 @@ offset 5..:  payload
 ((seqOrType & 0xff) << 16) | (cmd & 0x7fff)
 ```
 
-这和 OppoPods 当前外层格式对应：
+这和 TechnicsPods 当前外层格式对应：
 
 ```text
 AA [TotalLen] 00 00 [Cmd 2B LE] [Seq] [PayLen 2B LE] [Payload...]
@@ -106,7 +106,7 @@ AA [TotalLen] 00 00 [Cmd 2B LE] [Seq] [PayLen 2B LE] [Payload...]
 | 302 | `0x012E` | getAISummaryType |
 | 303 | `0x012F` | multi SPP command info |
 
-OppoPods 当前已经使用或解析的命令：
+TechnicsPods 当前已经使用或解析的命令：
 
 | 功能 | Cmd | 说明 |
 |---|---:|---|
@@ -120,7 +120,7 @@ OppoPods 当前已经使用或解析的命令：
 | 设置游戏模式 | `0x0403` | 标准模式只发 `28 01/00`；兼容模式开启发 `28 01` + `06 01`，关闭发 `06 00` + `28 00` |
 | 设置 ANC | `0x0404` | `01 01 <mode>` |
 
-## OppoPods 当前落地
+## TechnicsPods 当前落地
 
 当前实现位于：
 
@@ -146,12 +146,12 @@ RFCOMM connected via channel 15
 查看方式：
 
 ```powershell
-adb logcat -s OppoPods-RfcommController OppoPods-AppRfcomm
+adb logcat -s TechnicsPods-RfcommController TechnicsPods-AppRfcomm
 ```
 
 ## 仍需实机验证
 
 - UUID 经 SDP 最终解析出的实际 RFCOMM channel 需要 HCI snoop 或反射读取 `BluetoothSocket` 内部字段确认。
-- 欢律 packet 内层和 OppoPods 当前 `AA` 外层之间的拆包/封包位置还可以继续深挖，尤其是 read loop 中对原始流的切包逻辑。
+- 欢律 packet 内层和 TechnicsPods 当前 `AA` 外层之间的拆包/封包位置还可以继续深挖，尤其是 read loop 中对原始流的切包逻辑。
 - `0x0204` 主动上报复用了多种事件，当前只处理了电量和 ANC，按钮事件还可以继续解析。
 - `0x010D/0x810D` 的 key-value payload 还有更多 feature key；游戏模式相关至少包括主开关 `0x28` 和低延迟 `0x06`。

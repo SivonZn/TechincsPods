@@ -15,11 +15,11 @@ apksign {
 }
 
 android {
-    namespace = "moe.chenxy.oppopods"
+    namespace = "cn.martinkay.technicspods"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "moe.chenxy.oppopods"
+        applicationId = "cn.martinkay.technicspods"
         minSdk = 35
         targetSdk = 36
         versionCode = 8
@@ -70,12 +70,12 @@ android {
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(JavaVersion.VERSION_22.majorVersion)
+        languageVersion = JavaLanguageVersion.of(JavaVersion.VERSION_21.majorVersion)
     }
 }
 
 kotlin {
-    jvmToolchain(JavaVersion.VERSION_22.majorVersion.toInt())
+    jvmToolchain(JavaVersion.VERSION_21.majorVersion.toInt())
 }
 
 configurations.configureEach {
