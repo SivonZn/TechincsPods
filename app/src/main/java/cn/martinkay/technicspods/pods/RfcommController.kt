@@ -38,6 +38,7 @@ import java.util.concurrent.Executor
 object RfcommController {
     private const val TAG = "TechnicsPods-RfcommController"
     private const val BATTERY_POLL_INTERVAL_MS = 30_000L
+    private const val INITIAL_TOAST_SINGLE_EAR_GRACE_MS = 350L
 
     // Basic Objects
     private val rfcommLock = Any()
@@ -84,6 +85,7 @@ object RfcommController {
 
     // Polling job
     private var batteryPollJob: kotlinx.coroutines.Job? = null
+    private var pendingConnectionToastJob: kotlinx.coroutines.Job? = null
 
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(p0: Context?, p1: Intent?) {
@@ -259,6 +261,46 @@ object RfcommController {
         publishBatteryParams(batteryParams)
     }
 
+    private fun hasValidEarBattery(left: PodParams, right: PodParams): Boolean {
+        return (left.isConnected && left.battery > 0) || (right.isConnected && right.battery > 0)
+    }
+
+    private fun hasBothValidEarBatteries(left: PodParams, right: PodParams): Boolean {
+        return left.isConnected && left.battery > 0 && right.isConnected && right.battery > 0
+    }
+
+    private fun showInitialConnectionSurfaces(context: Context, batteryParams: BatteryParams) {
+        if (mShowedConnectedToast) return
+
+        mShowedConnectedToast = true
+        pendingConnectionToastJob?.cancel()
+        pendingConnectionToastJob = null
+
+        if (showConnectionBatteryIslandEnabled) {
+            MiuiStrongToastUtil.showPodsBatteryToastByMiuiBt(
+                context,
+                batteryParams
+            )
+        }
+        if (showConnectionPopupEnabled) {
+            showConnectionPopup(context, batteryParams)
+        }
+    }
+
+    private fun scheduleSingleEarConnectionSurfaces(context: Context) {
+        if (pendingConnectionToastJob != null) return
+
+        pendingConnectionToastJob = CoroutineScope(Dispatchers.IO).launch {
+            delay(INITIAL_TOAST_SINGLE_EAR_GRACE_MS)
+            val latest = currentBatterySnapshot()
+            val left = latest.left ?: PodParams()
+            val right = latest.right ?: PodParams()
+            if (!mShowedConnectedToast && hasValidEarBattery(left, right)) {
+                showInitialConnectionSurfaces(context, latest)
+            }
+        }
+    }
+
     @OptIn(ExperimentalStdlibApi::class)
     private fun publishBatteryParams(batteryParams: BatteryParams) {
         val context = mContext ?: return
@@ -276,23 +318,16 @@ object RfcommController {
         val shouldShowToast = !mShowedConnectedToast
         if (shouldShowToast) {
             // Wait until at least one connected ear has valid battery data
-            val hasValidData = (left.isConnected && left.battery > 0) ||
-                    (right.isConnected && right.battery > 0)
-            if (!hasValidData) return
+            if (!hasValidEarBattery(left, right)) return
         }
 
         currentBatteryParams = batteryParams
 
         if (shouldShowToast) {
-            mShowedConnectedToast = true
-            if (showConnectionBatteryIslandEnabled) {
-                MiuiStrongToastUtil.showPodsBatteryToastByMiuiBt(
-                    context,
-                    batteryParams
-                )
-            }
-            if (showConnectionPopupEnabled) {
-                showConnectionPopup(context, batteryParams)
+            if (hasBothValidEarBatteries(left, right)) {
+                showInitialConnectionSurfaces(context, batteryParams)
+            } else {
+                scheduleSingleEarConnectionSurfaces(context)
             }
         }
         if (showConnectionNotificationEnabled) {
@@ -629,6 +664,8 @@ object RfcommController {
         }
 
         mShowedConnectedToast = false
+        pendingConnectionToastJob?.cancel()
+        pendingConnectionToastJob = null
         lastKnownCaseBattery = 0
         lastKnownCaseCharging = false
         cachedDeviceName = ""
