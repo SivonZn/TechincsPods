@@ -142,6 +142,12 @@ class AppRfcommController {
             _batteryParams.value = BatteryParams(left, right, case)
             return
         }
+
+        val ancResult = TechnicsAncParser.parse(packet)
+        if (ancResult != null) {
+            _ancMode.value = intToNoiseControlMode(ancResult)
+            return
+        }
     }
 
     private fun sendPacket(packet: ByteArray) {
@@ -164,7 +170,31 @@ class AppRfcommController {
 
     fun setANCMode(mode: NoiseControlMode) {
         _ancMode.value = mode
-        Log.d(TAG, "setANCMode ignored: Technics ANC protocol is not implemented")
+        scope.launch {
+            TechnicsPackets.setAncModeSequence(noiseControlModeToInt(mode)).forEachIndexed { index, packet ->
+                sendPacket(packet)
+                Log.d(TAG, "setANCMode sent step ${index + 1} for $mode")
+                delay(80)
+            }
+        }
+    }
+
+    private fun noiseControlModeToInt(mode: NoiseControlMode): Int {
+        return when (mode) {
+            NoiseControlMode.OFF -> 1
+            NoiseControlMode.NOISE_CANCELLATION -> 2
+            NoiseControlMode.TRANSPARENCY -> 3
+            NoiseControlMode.ADAPTIVE -> 4
+        }
+    }
+
+    private fun intToNoiseControlMode(mode: Int): NoiseControlMode {
+        return when (mode) {
+            2 -> NoiseControlMode.NOISE_CANCELLATION
+            3 -> NoiseControlMode.TRANSPARENCY
+            4 -> NoiseControlMode.ADAPTIVE
+            else -> NoiseControlMode.OFF
+        }
     }
 
     /**

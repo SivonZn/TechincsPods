@@ -596,6 +596,13 @@ object RfcommController {
             return
         }
 
+        val ancResult = TechnicsAncParser.parse(packet)
+        if (ancResult != null) {
+            currentAnc = ancResult
+            changeUIAncStatus(ancResult)
+            return
+        }
+
         // Unknown packet - log in debug
         if (BuildConfig.DEBUG) {
             Log.v(TAG, "Unknown Technics packet: ${packet.toHexString(HexFormat.UpperCase)}")
@@ -687,7 +694,16 @@ object RfcommController {
         if (mode !in 1..4) return
         currentAnc = mode
         changeUIAncStatus(mode)
-        Log.d(TAG, "setANCMode ignored: Technics ANC protocol is not implemented")
+        CoroutineScope(Dispatchers.IO).launch {
+            val packets = TechnicsPackets.setAncModeSequence(mode)
+            if (packets.isEmpty()) return@launch
+            packets.forEachIndexed { index, packet ->
+                if (!sendPacketSafe(packet, "set ANC mode $mode step ${index + 1}", true)) {
+                    return@launch
+                }
+                delay(80)
+            }
+        }
     }
 
     fun queryBattery(allowReconnect: Boolean = false) {
