@@ -148,17 +148,24 @@ object MiBluetoothToastHook : HookContext() {
                 intent.putExtra("btData", bundle)
                 intent.putExtra("disconnect", "1")
                 intent.setIdentifier("BTHeadset$address")
-                val disconnectAction = Notification.Action(
-                    285737079,
-                    context.resources.getString(miheadset_notification_Disconnect),
-                    PendingIntent.getBroadcast(context, 0, intent, PENDING_INTENT_FLAGS)
-                )
                 // 循环切换降噪模式：降噪 → 自适应 → 通透 → 关，指定 package 确保广播路由到 com.android.bluetooth 进程
                 val ancCycleIntent = Intent(TechnicsPodsAction.ACTION_CYCLE_ANC)
                 ancCycleIntent.setPackage("com.android.bluetooth")
                 ancCycleIntent.setIdentifier("BTHeadset$address")
                 val moduleContext = context.createPackageContext(
                     "cn.martinkay.technicspods", Context.CONTEXT_IGNORE_SECURITY
+                )
+                val ancLabel = moduleContext.getString(R.string.cycle_anc)
+                val disconnectLabel = moduleContext.getString(R.string.notification_btn_disconnect)
+                val ancCycleAction = Notification.Action.Builder(
+                    Icon.createWithResource(context, android.R.drawable.ic_lock_silent_mode),
+                    ancLabel,
+                    PendingIntent.getBroadcast(context, 1, ancCycleIntent, PENDING_INTENT_FLAGS)
+                ).build()
+                val disconnectAction = Notification.Action(
+                    285737079,
+                    disconnectLabel,
+                    PendingIntent.getBroadcast(context, 0, intent, PENDING_INTENT_FLAGS)
                 )
                 val headsetIcon = Icon.createWithBitmap(
                     BitmapFactory.decodeResource(moduleContext.resources, R.drawable.img_box)
@@ -210,7 +217,6 @@ object MiBluetoothToastHook : HookContext() {
 
                     textButton {
                         addActionInfo {
-                            val ancLabel = moduleContext.getString(R.string.cycle_anc)
                             val ancAction = Notification.Action.Builder(
                                 Icon.createWithResource(context, android.R.drawable.ic_lock_silent_mode),
                                 ancLabel,
@@ -220,7 +226,6 @@ object MiBluetoothToastHook : HookContext() {
                             actionTitle = ancLabel
                         }
                         addActionInfo {
-                            val disconnectLabel = moduleContext.getString(R.string.notification_btn_disconnect)
                             val disconnectIntent = Intent("com.android.bluetooth.headset.notification").apply {
                                 setPackage("com.android.bluetooth")
                                 putExtra("btData", bundle)
@@ -267,6 +272,7 @@ object MiBluetoothToastHook : HookContext() {
                         .setContentIntent(pendingIntent)
                         .setDeleteIntent(deleteIntent(context, bluetoothDevice))
                         .setColor(context.getColor(system_notification_accent_color))
+                        .addAction(ancCycleAction)
                         .addAction(disconnectAction)
                         .apply { focusExtras?.let { addExtras(it) } }
                         .setVisibility(Notification.VISIBILITY_PUBLIC)
