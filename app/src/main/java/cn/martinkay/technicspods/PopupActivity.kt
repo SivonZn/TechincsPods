@@ -240,6 +240,11 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
         }
     }
 
+    fun previewAncLevels(nextNoiseCancelLevel: Int, nextTransparencyLevel: Int) {
+        noiseCancelLevel.value = nextNoiseCancelLevel.coerceIn(0, 100)
+        transparencyLevel.value = nextTransparencyLevel.coerceIn(0, 100)
+    }
+
     val dialogBgColor = if (isDarkMode) Color(0xFF1A1A1A) else Color(0xFFF7F7F7)
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
@@ -264,9 +269,15 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                     gameMode = gameMode.value,
                     onAncModeChange = ::setAncMode,
                     onNoiseCancelLevelChange = {
-                        setAncLevels(it, transparencyLevel.value)
+                        previewAncLevels(it, transparencyLevel.value)
                     },
                     onTransparencyLevelChange = {
+                        previewAncLevels(noiseCancelLevel.value, it)
+                    },
+                    onNoiseCancelLevelCommit = {
+                        setAncLevels(it, transparencyLevel.value)
+                    },
+                    onTransparencyLevelCommit = {
                         setAncLevels(noiseCancelLevel.value, it)
                     },
                     onGameModeChange = ::setGameMode,
@@ -283,9 +294,15 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                     gameMode = gameMode.value,
                     onAncModeChange = ::setAncMode,
                     onNoiseCancelLevelChange = {
-                        setAncLevels(it, transparencyLevel.value)
+                        previewAncLevels(it, transparencyLevel.value)
                     },
                     onTransparencyLevelChange = {
+                        previewAncLevels(noiseCancelLevel.value, it)
+                    },
+                    onNoiseCancelLevelCommit = {
+                        setAncLevels(it, transparencyLevel.value)
+                    },
+                    onTransparencyLevelCommit = {
                         setAncLevels(noiseCancelLevel.value, it)
                     },
                     onGameModeChange = ::setGameMode,
@@ -308,6 +325,8 @@ private fun PortraitPopupBody(
     onAncModeChange: (NoiseControlMode) -> Unit,
     onNoiseCancelLevelChange: (Int) -> Unit,
     onTransparencyLevelChange: (Int) -> Unit,
+    onNoiseCancelLevelCommit: (Int) -> Unit,
+    onTransparencyLevelCommit: (Int) -> Unit,
     onGameModeChange: (Boolean) -> Unit,
     onMore: () -> Unit,
     onDone: () -> Unit,
@@ -330,7 +349,9 @@ private fun PortraitPopupBody(
                 noiseCancelLevel = noiseCancelLevel,
                 transparencyLevel = transparencyLevel,
                 onNoiseCancelLevelChange = onNoiseCancelLevelChange,
-                onTransparencyLevelChange = onTransparencyLevelChange
+                onTransparencyLevelChange = onTransparencyLevelChange,
+                onNoiseCancelLevelCommit = onNoiseCancelLevelCommit,
+                onTransparencyLevelCommit = onTransparencyLevelCommit
             )
         }
         Spacer(modifier = Modifier.height(12.dp))
@@ -371,6 +392,8 @@ private fun LandscapePopupBody(
     onAncModeChange: (NoiseControlMode) -> Unit,
     onNoiseCancelLevelChange: (Int) -> Unit,
     onTransparencyLevelChange: (Int) -> Unit,
+    onNoiseCancelLevelCommit: (Int) -> Unit,
+    onTransparencyLevelCommit: (Int) -> Unit,
     onGameModeChange: (Boolean) -> Unit,
     onMore: () -> Unit,
     onDone: () -> Unit,
@@ -404,6 +427,8 @@ private fun LandscapePopupBody(
                     transparencyLevel = transparencyLevel,
                     onNoiseCancelLevelChange = onNoiseCancelLevelChange,
                     onTransparencyLevelChange = onTransparencyLevelChange,
+                    onNoiseCancelLevelCommit = onNoiseCancelLevelCommit,
+                    onTransparencyLevelCommit = onTransparencyLevelCommit,
                     compact = true
                 )
             }

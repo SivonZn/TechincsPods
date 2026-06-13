@@ -29,6 +29,8 @@ fun PodDetailPage(
     transparencyLevel: Int = 50,
     onNoiseCancelLevelChange: (Int) -> Unit = {},
     onTransparencyLevelChange: (Int) -> Unit = {},
+    onNoiseCancelLevelCommit: (Int) -> Unit = onNoiseCancelLevelChange,
+    onTransparencyLevelCommit: (Int) -> Unit = onTransparencyLevelChange,
     gameMode: Boolean = false,
     onGameModeChange: (Boolean) -> Unit = {},
     adaptiveModeEnabled: Boolean = true
@@ -62,7 +64,9 @@ fun PodDetailPage(
                     noiseCancelLevel = noiseCancelLevel,
                     transparencyLevel = transparencyLevel,
                     onNoiseCancelLevelChange = onNoiseCancelLevelChange,
-                    onTransparencyLevelChange = onTransparencyLevelChange
+                    onTransparencyLevelChange = onTransparencyLevelChange,
+                    onNoiseCancelLevelCommit = onNoiseCancelLevelCommit,
+                    onTransparencyLevelCommit = onTransparencyLevelCommit
                 )
             }
         }

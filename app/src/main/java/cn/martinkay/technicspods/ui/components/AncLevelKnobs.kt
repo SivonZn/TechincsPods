@@ -35,7 +35,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cn.martinkay.technicspods.R
-import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.Text
@@ -45,6 +44,8 @@ private const val POWERAMP_VALUE_START_ANGLE = 30f
 private const val POWERAMP_VALUE_END_ANGLE = 330f
 private const val POWERAMP_SWEEP_ANGLE = POWERAMP_VALUE_END_ANGLE - POWERAMP_VALUE_START_ANGLE
 private const val POWERAMP_DRAW_START_ANGLE = 90f + POWERAMP_VALUE_START_ANGLE
+private const val POWERAMP_DRAW_END_ANGLE = (POWERAMP_DRAW_START_ANGLE + POWERAMP_SWEEP_ANGLE) % 360f
+private const val POWERAMP_DRAW_GAP_MID_ANGLE = (POWERAMP_DRAW_START_ANGLE + POWERAMP_DRAW_END_ANGLE) / 2f
 
 @Composable
 fun AncLevelKnobs(
@@ -52,6 +53,8 @@ fun AncLevelKnobs(
     transparencyLevel: Int,
     onNoiseCancelLevelChange: (Int) -> Unit,
     onTransparencyLevelChange: (Int) -> Unit,
+    onNoiseCancelLevelCommit: (Int) -> Unit = onNoiseCancelLevelChange,
+    onTransparencyLevelCommit: (Int) -> Unit = onTransparencyLevelChange,
     modifier: Modifier = Modifier,
     compact: Boolean = false
 ) {
@@ -69,6 +72,7 @@ fun AncLevelKnobs(
             label = stringResource(R.string.noise_cancellation_title),
             value = noiseCancelLevel,
             onValueChange = onNoiseCancelLevelChange,
+            onValueCommit = onNoiseCancelLevelCommit,
             compact = compact,
             modifier = Modifier.weight(1f)
         )
@@ -76,6 +80,7 @@ fun AncLevelKnobs(
             label = stringResource(R.string.transparency_title),
             value = transparencyLevel,
             onValueChange = onTransparencyLevelChange,
+            onValueCommit = onTransparencyLevelCommit,
             compact = compact,
             modifier = Modifier.weight(1f)
         )
@@ -87,6 +92,7 @@ private fun AncLevelKnob(
     label: String,
     value: Int,
     onValueChange: (Int) -> Unit,
+    onValueCommit: (Int) -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false
 ) {
@@ -106,6 +112,7 @@ private fun AncLevelKnob(
             RoundAncKnobCanvas(
                 value = value,
                 onValueChange = onValueChange,
+                onValueCommit = onValueCommit,
                 size = size,
                 knobSize = knobSize,
                 palette = palette
@@ -134,54 +141,50 @@ private fun AncLevelKnob(
 private fun RoundAncKnobCanvas(
     value: Int,
     onValueChange: (Int) -> Unit,
+    onValueCommit: (Int) -> Unit,
     size: Dp,
     knobSize: Dp,
     palette: PowerampKnobPalette
 ) {
     var draggingValue by remember { mutableIntStateOf(value) }
-    var draggingValueFloat by remember { mutableFloatStateOf(value.toFloat()) }
     var isDragging by remember { mutableFloatStateOf(0f) }
-    var lastDragAngle by remember { mutableFloatStateOf(0f) }
     val shownValue = if (isDragging > 0f) draggingValue else value
 
     Canvas(
         modifier = Modifier
             .size(size)
             .pointerInput(value) {
-                fun Offset.pointerAngle(): Float {
+                fun Offset.toLevel(): Int {
                     val side = size.toPx()
                     val center = Offset(side / 2f, side / 2f)
                     val rawDegrees = Math.toDegrees(
                         atan2(y - center.y, x - center.x).toDouble()
                     ).toFloat()
-                    return (rawDegrees + 360f) % 360f
-                }
-
-                fun shortestAngleDelta(from: Float, to: Float): Float {
-                    var delta = to - from
-                    while (delta > 180f) delta -= 360f
-                    while (delta < -180f) delta += 360f
-                    return delta
+                    val degrees = (rawDegrees + 360f) % 360f
+                    val normalized = ((degrees - POWERAMP_DRAW_START_ANGLE + 360f) % 360f)
+                    val clamped = when {
+                        normalized <= POWERAMP_SWEEP_ANGLE -> normalized
+                        degrees < POWERAMP_DRAW_GAP_MID_ANGLE -> POWERAMP_SWEEP_ANGLE
+                        else -> 0f
+                    }
+                    return ((clamped / POWERAMP_SWEEP_ANGLE) * 100f).roundToInt().coerceIn(0, 100)
                 }
 
                 detectDragGestures(
                     onDragStart = {
-                        draggingValue = value
-                        draggingValueFloat = value.toFloat()
-                        lastDragAngle = it.pointerAngle()
+                        draggingValue = it.toLevel()
                         isDragging = 1f
+                        onValueChange(draggingValue)
                     },
-                    onDragEnd = { isDragging = 0f },
-                    onDragCancel = { isDragging = 0f },
+                    onDragEnd = {
+                        isDragging = 0f
+                        onValueCommit(draggingValue)
+                    },
+                    onDragCancel = {
+                        isDragging = 0f
+                    },
                     onDrag = { change, _ ->
-                        val nextAngle = change.position.pointerAngle()
-                        val delta = shortestAngleDelta(lastDragAngle, nextAngle)
-                        lastDragAngle = nextAngle
-                        if (abs(delta) > 120f) return@detectDragGestures
-
-                        draggingValueFloat = (draggingValueFloat + delta / POWERAMP_SWEEP_ANGLE * 100f)
-                            .coerceIn(0f, 100f)
-                        val next = draggingValueFloat.roundToInt().coerceIn(0, 100)
+                        val next = change.position.toLevel()
                         if (next != draggingValue) {
                             draggingValue = next
                             onValueChange(next)

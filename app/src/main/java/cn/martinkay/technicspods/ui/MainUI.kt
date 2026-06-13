@@ -336,6 +336,11 @@ fun MainUI(
         }
     }
 
+    fun previewAncLevels(nextNoiseCancelLevel: Int, nextTransparencyLevel: Int) {
+        noiseCancelLevel.value = nextNoiseCancelLevel.coerceIn(0, 100)
+        transparencyLevel.value = nextTransparencyLevel.coerceIn(0, 100)
+    }
+
     fun onDeviceSelected(device: BluetoothDevice) {
         appController.setAncLevels(noiseCancelLevel.value, transparencyLevel.value)
         appController.connect(
@@ -444,9 +449,15 @@ fun MainUI(
                             noiseCancelLevel = displayNoiseCancelLevel,
                             transparencyLevel = displayTransparencyLevel,
                             onNoiseCancelLevelChange = {
-                                setAncLevels(it, displayTransparencyLevel)
+                                previewAncLevels(it, displayTransparencyLevel)
                             },
                             onTransparencyLevelChange = {
+                                previewAncLevels(displayNoiseCancelLevel, it)
+                            },
+                            onNoiseCancelLevelCommit = {
+                                setAncLevels(it, displayTransparencyLevel)
+                            },
+                            onTransparencyLevelCommit = {
                                 setAncLevels(displayNoiseCancelLevel, it)
                             },
                             gameMode = displayGameMode,
