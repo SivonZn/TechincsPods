@@ -14,8 +14,10 @@ import androidx.core.content.ContextCompat
 import cn.martinkay.technicspods.R
 import kotlin.math.atan2
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 private const val VALUE_START_ANGLE = 30f
 private const val VALUE_END_ANGLE = 330f
@@ -41,6 +43,10 @@ class PowerampRoundKnobView @JvmOverloads constructor(
     var onValueCommit: ((Int) -> Unit)? = null
 
     private var dragValue = value
+    private var dragValueFloat = value.toFloat()
+    private var lastTouchX = 0f
+    private var lastTouchY = 0f
+    private var hasDragged = false
     private var touchedGap = false
     private val knobDrawable = ContextCompat.getDrawable(context, R.drawable.poweramp_round_knob)?.mutate()
     private val indicatorDrawable =
@@ -129,17 +135,24 @@ class PowerampRoundKnobView @JvmOverloads constructor(
                 parent?.requestDisallowInterceptTouchEvent(true)
                 isPressed = true
                 dragValue = value
+                dragValueFloat = value.toFloat()
+                lastTouchX = event.x
+                lastTouchY = event.y
+                hasDragged = false
                 touchedGap = false
-                updateFromTouch(event.x, event.y)
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                updateFromTouch(event.x, event.y)
+                updateFromDrag(event.x, event.y)
                 return true
             }
             MotionEvent.ACTION_UP -> {
-                updateFromTouch(event.x, event.y)
+                if (!hasDragged) {
+                    updateFromTap(event.x, event.y)
+                }
                 isPressed = false
+                touchedGap = false
+                hasDragged = false
                 parent?.requestDisallowInterceptTouchEvent(false)
                 onValueCommit?.invoke(dragValue)
                 performClick()
@@ -147,6 +160,7 @@ class PowerampRoundKnobView @JvmOverloads constructor(
             }
             MotionEvent.ACTION_CANCEL -> {
                 isPressed = false
+                hasDragged = false
                 touchedGap = false
                 parent?.requestDisallowInterceptTouchEvent(false)
                 invalidate()
@@ -161,18 +175,50 @@ class PowerampRoundKnobView @JvmOverloads constructor(
         return true
     }
 
-    private fun updateFromTouch(x: Float, y: Float) {
+    private fun updateFromTap(x: Float, y: Float) {
         val next = pointToLevelOrNull(x, y) ?: run {
             touchedGap = true
             return
         }
         if (touchedGap && abs(next - dragValue) > 50) return
         touchedGap = false
-        if (next != dragValue) {
-            dragValue = next
-            value = next
-            onValueChange?.invoke(next)
+        applyDragValue(next.toFloat())
+    }
+
+    private fun updateFromDrag(x: Float, y: Float) {
+        val dx = x - lastTouchX
+        val dy = y - lastTouchY
+        lastTouchX = x
+        lastTouchY = y
+        if (abs(dx) < 0.5f && abs(dy) < 0.5f) return
+
+        hasDragged = true
+        val effectiveDeltaPx = if (abs(dx) > abs(dy) * 1.15f) {
+            dx
+        } else {
+            projectToCurrentTangent(dx, dy)
         }
+        val fullRangePx = width.coerceAtLeast(1) * 0.9f
+        val next = dragValueFloat + (effectiveDeltaPx / fullRangePx) * 100f
+        applyDragValue(next)
+    }
+
+    private fun applyDragValue(next: Float) {
+        dragValueFloat = next.coerceIn(0f, 100f)
+        val nextInt = dragValueFloat.roundToInt().coerceIn(0, 100)
+        if (nextInt != dragValue) {
+            dragValue = nextInt
+            value = nextInt
+            onValueChange?.invoke(nextInt)
+        }
+    }
+
+    private fun projectToCurrentTangent(dx: Float, dy: Float): Float {
+        val drawAngle = DRAW_START_ANGLE + (SWEEP_ANGLE * dragValueFloat / 100f)
+        val radians = Math.toRadians(drawAngle.toDouble())
+        val tangentX = -sin(radians).toFloat()
+        val tangentY = cos(radians).toFloat()
+        return dx * tangentX + dy * tangentY
     }
 
     private fun pointToLevelOrNull(x: Float, y: Float): Int? {
