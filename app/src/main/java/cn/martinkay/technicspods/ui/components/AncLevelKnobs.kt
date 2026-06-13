@@ -1,6 +1,7 @@
 package cn.martinkay.technicspods.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +26,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -40,8 +42,10 @@ import kotlin.math.sin
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-private const val START_ANGLE = 135f
-private const val SWEEP_ANGLE = 270f
+private const val POWERAMP_VALUE_START_ANGLE = 30f
+private const val POWERAMP_VALUE_END_ANGLE = 330f
+private const val POWERAMP_SWEEP_ANGLE = POWERAMP_VALUE_END_ANGLE - POWERAMP_VALUE_START_ANGLE
+private const val POWERAMP_DRAW_START_ANGLE = 90f + POWERAMP_VALUE_START_ANGLE
 
 @Composable
 fun AncLevelKnobs(
@@ -88,13 +92,9 @@ private fun AncLevelKnob(
     compact: Boolean = false
 ) {
     val size = if (compact) 82.dp else 108.dp
-    val knobSize = if (compact) 62.dp else 82.dp
-    val primary = MiuixTheme.colorScheme.primary
+    val knobSize = if (compact) 58.dp else 76.dp
     val textColor = MiuixTheme.colorScheme.onBackground
-    val trackColor = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.24f)
-    val knobBorder = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.44f)
-    val knobFill = MiuixTheme.colorScheme.background.copy(alpha = 0.92f)
-    val indicator = MiuixTheme.colorScheme.onBackground
+    val palette = powerampKnobPalette(isSystemInDarkTheme())
 
     Column(
         modifier = modifier,
@@ -109,11 +109,7 @@ private fun AncLevelKnob(
                 onValueChange = onValueChange,
                 size = size,
                 knobSize = knobSize,
-                primary = primary,
-                trackColor = trackColor,
-                knobBorder = knobBorder,
-                knobFill = knobFill,
-                indicator = indicator
+                palette = palette
             )
             Text(
                 text = value.toString(),
@@ -140,11 +136,7 @@ private fun RoundAncKnobCanvas(
     onValueChange: (Int) -> Unit,
     size: Dp,
     knobSize: Dp,
-    primary: Color,
-    trackColor: Color,
-    knobBorder: Color,
-    knobFill: Color,
-    indicator: Color
+    palette: PowerampKnobPalette
 ) {
     var draggingValue by remember { mutableIntStateOf(value) }
     var isDragging by remember { mutableFloatStateOf(0f) }
@@ -160,9 +152,13 @@ private fun RoundAncKnobCanvas(
                         atan2(y - center.y, x - center.x).toDouble()
                     ).toFloat()
                     val degrees = (rawDegrees + 360f) % 360f
-                    val normalized = ((degrees - START_ANGLE + 360f) % 360f)
-                        .coerceIn(0f, SWEEP_ANGLE)
-                    return ((normalized / SWEEP_ANGLE) * 100f).roundToInt().coerceIn(0, 100)
+                    val normalized = ((degrees - POWERAMP_VALUE_START_ANGLE + 360f) % 360f)
+                    val clamped = when {
+                        normalized <= POWERAMP_SWEEP_ANGLE -> normalized
+                        degrees < POWERAMP_VALUE_START_ANGLE -> 0f
+                        else -> POWERAMP_SWEEP_ANGLE
+                    }
+                    return ((clamped / POWERAMP_SWEEP_ANGLE) * 100f).roundToInt().coerceIn(0, 100)
                 }
 
                 detectDragGestures(
@@ -183,26 +179,21 @@ private fun RoundAncKnobCanvas(
                 )
             }
     ) {
-        val stroke = 4.dp.toPx()
-        val arcInset = stroke / 2f + 2.dp.toPx()
+        val stroke = 3.dp.toPx()
+        val arcInset = ((size.toPx() - knobSize.toPx()) / 2f) - 3.dp.toPx()
         val arcSize = Size(size.toPx() - arcInset * 2f, size.toPx() - arcInset * 2f)
-        val sweep = SWEEP_ANGLE * shownValue / 100f
+        val sweep = POWERAMP_SWEEP_ANGLE * shownValue / 100f
         val center = Offset(size.toPx() / 2f, size.toPx() / 2f)
         val knobRadius = knobSize.toPx() / 2f
-        val indicatorAngle = Math.toRadians((START_ANGLE + sweep).toDouble())
-        val indicatorStart = Offset(
-            center.x + cos(indicatorAngle).toFloat() * (knobRadius - 15.dp.toPx()),
-            center.y + sin(indicatorAngle).toFloat() * (knobRadius - 15.dp.toPx())
-        )
-        val indicatorEnd = Offset(
-            center.x + cos(indicatorAngle).toFloat() * (knobRadius - 5.dp.toPx()),
-            center.y + sin(indicatorAngle).toFloat() * (knobRadius - 5.dp.toPx())
-        )
+        val indicatorAngle = POWERAMP_VALUE_START_ANGLE + sweep
+        val indicatorWidth = 5.dp.toPx()
+        val indicatorHeight = 10.dp.toPx()
+        val indicatorTop = knobRadius - 20.dp.toPx()
 
         drawArc(
-            color = trackColor,
-            startAngle = START_ANGLE,
-            sweepAngle = SWEEP_ANGLE,
+            color = palette.arcTrack,
+            startAngle = POWERAMP_DRAW_START_ANGLE,
+            sweepAngle = POWERAMP_SWEEP_ANGLE,
             useCenter = false,
             topLeft = Offset(arcInset, arcInset),
             size = arcSize,
@@ -210,24 +201,26 @@ private fun RoundAncKnobCanvas(
         )
         drawArc(
             brush = Brush.sweepGradient(
-                0.0f to primary.copy(alpha = 0.52f),
-                0.72f to primary,
-                1.0f to primary.copy(alpha = 0.52f),
+                0.0f to palette.arcHilite.copy(alpha = 0.45f),
+                0.35f to palette.arcHilite,
+                1.0f to palette.arcHilite.copy(alpha = 0.78f),
                 center = center
             ),
-            startAngle = START_ANGLE,
+            startAngle = POWERAMP_DRAW_START_ANGLE,
             sweepAngle = sweep,
             useCenter = false,
             topLeft = Offset(arcInset, arcInset),
             size = arcSize,
             style = Stroke(width = stroke, cap = StrokeCap.Round)
         )
-        repeat(11) { tick ->
-            val tickAngle = Math.toRadians((START_ANGLE + SWEEP_ANGLE * tick / 10f).toDouble())
-            val outer = size.toPx() / 2f - 1.dp.toPx()
-            val inner = outer - if (tick % 5 == 0) 7.dp.toPx() else 4.dp.toPx()
+        repeat(7) { tick ->
+            val tickAngle = Math.toRadians(
+                (POWERAMP_DRAW_START_ANGLE + POWERAMP_SWEEP_ANGLE * tick / 6f).toDouble()
+            )
+            val outer = size.toPx() / 2f - 2.dp.toPx()
+            val inner = outer - if (tick % 3 == 0) 6.dp.toPx() else 3.5.dp.toPx()
             drawLine(
-                color = trackColor.copy(alpha = if (tick % 5 == 0) 0.72f else 0.45f),
+                color = palette.arcTrack.copy(alpha = if (tick % 3 == 0) 0.86f else 0.55f),
                 start = Offset(
                     center.x + cos(tickAngle).toFloat() * inner,
                     center.y + sin(tickAngle).toFloat() * inner
@@ -236,33 +229,75 @@ private fun RoundAncKnobCanvas(
                     center.x + cos(tickAngle).toFloat() * outer,
                     center.y + sin(tickAngle).toFloat() * outer
                 ),
-                strokeWidth = if (tick % 5 == 0) 1.5.dp.toPx() else 1.dp.toPx(),
+                strokeWidth = if (tick % 3 == 0) 1.3.dp.toPx() else 1.dp.toPx(),
                 cap = StrokeCap.Round
             )
         }
         drawCircle(
-            color = knobFill,
+            color = palette.knobBg,
             radius = knobRadius,
             center = center
         )
         drawCircle(
-            color = knobBorder,
+            color = if (isDragging > 0f) palette.knobPressed else palette.knobBorder,
             radius = knobRadius,
             center = center,
-            style = Stroke(width = 2.dp.toPx())
+            style = Stroke(width = if (isDragging > 0f) 3.5.dp.toPx() else 2.dp.toPx())
         )
-        drawLine(
-            color = indicator,
-            start = indicatorStart,
-            end = indicatorEnd,
-            strokeWidth = 4.dp.toPx(),
-            cap = StrokeCap.Round
-        )
+        rotate(degrees = indicatorAngle, pivot = center) {
+            drawRoundRect(
+                color = if (isDragging > 0f) palette.indicatorPressed else palette.indicator,
+                topLeft = Offset(
+                    center.x - indicatorWidth / 2f,
+                    center.y + indicatorTop
+                ),
+                size = Size(indicatorWidth, indicatorHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx(), 4.dp.toPx())
+            )
+        }
         drawCircle(
-            color = Color.White.copy(alpha = 0.09f),
-            radius = knobRadius - 7.dp.toPx(),
-            center = center.copy(y = center.y - 3.dp.toPx()),
+            color = palette.hole,
+            radius = 1.5.dp.toPx(),
+            center = center.copy(y = center.y + knobRadius - 20.dp.toPx()),
             style = Stroke(width = 1.dp.toPx())
+        )
+    }
+}
+
+private data class PowerampKnobPalette(
+    val knobBg: Color,
+    val knobBorder: Color,
+    val knobPressed: Color,
+    val indicator: Color,
+    val indicatorPressed: Color,
+    val hole: Color,
+    val arcTrack: Color,
+    val arcHilite: Color
+)
+
+@Composable
+private fun powerampKnobPalette(isDark: Boolean): PowerampKnobPalette {
+    return if (isDark) {
+        PowerampKnobPalette(
+            knobBg = Color(0xFF222222),
+            knobBorder = Color(0xFF484848),
+            knobPressed = Color.White,
+            indicator = Color(0xFFCCCCCC),
+            indicatorPressed = Color.White,
+            hole = Color(0xFF555555),
+            arcTrack = Color(0xFF777777),
+            arcHilite = MiuixTheme.colorScheme.primary
+        )
+    } else {
+        PowerampKnobPalette(
+            knobBg = Color.White,
+            knobBorder = Color(0xFF333333),
+            knobPressed = Color.Black,
+            indicator = Color(0xFF656565),
+            indicatorPressed = Color.Black,
+            hole = Color(0xFF555555),
+            arcTrack = Color(0xFF777777),
+            arcHilite = MiuixTheme.colorScheme.primary
         )
     }
 }
