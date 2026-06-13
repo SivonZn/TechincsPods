@@ -11,6 +11,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import cn.martinkay.technicspods.R
 import cn.martinkay.technicspods.pods.NoiseControlMode
+import cn.martinkay.technicspods.ui.components.AncLevelKnobs
 import cn.martinkay.technicspods.ui.components.AncSwitch
 import cn.martinkay.technicspods.ui.components.PodStatus
 import cn.martinkay.technicspods.utils.miuiStrongToast.data.BatteryParams
@@ -24,6 +25,10 @@ fun PodDetailPage(
     batteryParams: BatteryParams,
     ancMode: NoiseControlMode,
     onAncModeChange: (NoiseControlMode) -> Unit,
+    noiseCancelLevel: Int = 100,
+    transparencyLevel: Int = 50,
+    onNoiseCancelLevelChange: (Int) -> Unit = {},
+    onTransparencyLevelChange: (Int) -> Unit = {},
     gameMode: Boolean = false,
     onGameModeChange: (Boolean) -> Unit = {},
     adaptiveModeEnabled: Boolean = true
@@ -46,6 +51,19 @@ fun PodDetailPage(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
             ) {
                 AncSwitch(ancMode, onAncModeChange, adaptiveModeEnabled = adaptiveModeEnabled)
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
+            ) {
+                AncLevelKnobs(
+                    noiseCancelLevel = noiseCancelLevel,
+                    transparencyLevel = transparencyLevel,
+                    onNoiseCancelLevelChange = onNoiseCancelLevelChange,
+                    onTransparencyLevelChange = onTransparencyLevelChange
+                )
             }
         }
 

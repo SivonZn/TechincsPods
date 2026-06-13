@@ -78,7 +78,33 @@ object TechnicsPackets {
         )
     }
 
-    fun setAncModeSequence(mode: Int): List<ByteArray> {
+    fun setNoiseCancelLevel(
+        level: Int,
+        ambientLevel: Int = DEFAULT_AMBIENT_LEVEL
+    ): ByteArray {
+        return setOutsideControl(
+            OUTSIDE_CTRL_NOISE_CANCELLING,
+            level.coerceIn(0, 100),
+            ambientLevel.coerceIn(0, 100)
+        )
+    }
+
+    fun setTransparencyLevel(
+        noiseCancelLevel: Int = DEFAULT_NOISE_CANCEL_LEVEL,
+        level: Int
+    ): ByteArray {
+        return setOutsideControl(
+            OUTSIDE_CTRL_AMBIENT,
+            noiseCancelLevel.coerceIn(0, 100),
+            level.coerceIn(0, 100)
+        )
+    }
+
+    fun setAncModeSequence(
+        mode: Int,
+        noiseCancelLevel: Int = DEFAULT_NOISE_CANCEL_LEVEL,
+        ambientLevel: Int = DEFAULT_AMBIENT_LEVEL
+    ): List<ByteArray> {
         return when (mode) {
             // OppoPods UI mapping: 1=off, 2=noise cancelling, 3=transparency, 4=adaptive.
             1 -> listOf(
@@ -87,16 +113,16 @@ object TechnicsPackets {
             )
             2 -> listOf(
                 SET_ADAPTIVE_ANC_OFF,
-                setOutsideControl(OUTSIDE_CTRL_NOISE_CANCELLING),
+                setNoiseCancelLevel(noiseCancelLevel, ambientLevel),
                 SET_NOISE_CANCELING_ADJUST_DEFAULT
             )
             3 -> listOf(
                 SET_ADAPTIVE_ANC_OFF,
                 SET_AMBIENT_MODE_TRANSPARENT,
-                setOutsideControl(OUTSIDE_CTRL_AMBIENT)
+                setTransparencyLevel(noiseCancelLevel, ambientLevel)
             )
             4 -> listOf(
-                setOutsideControl(OUTSIDE_CTRL_NOISE_CANCELLING),
+                setNoiseCancelLevel(noiseCancelLevel, ambientLevel),
                 SET_ADAPTIVE_ANC_ON
             )
             else -> emptyList()

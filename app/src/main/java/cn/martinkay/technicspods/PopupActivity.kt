@@ -33,10 +33,12 @@ import kotlinx.coroutines.delay
 import cn.martinkay.technicspods.R
 import cn.martinkay.technicspods.pods.NoiseControlMode
 import cn.martinkay.technicspods.ui.AppTheme
+import cn.martinkay.technicspods.ui.components.AncLevelKnobs
 import cn.martinkay.technicspods.ui.components.AncSwitch
 import cn.martinkay.technicspods.ui.components.TechnicsDeviceBatteryStatus
 import cn.martinkay.technicspods.utils.miuiStrongToast.data.BatteryParams
 import cn.martinkay.technicspods.utils.miuiStrongToast.data.TechnicsPodsAction
+import cn.martinkay.technicspods.utils.miuiStrongToast.data.TechnicsPodsPrefsKey
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -96,6 +98,22 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
 
     val batteryParams = remember { mutableStateOf(BatteryParams()) }
     val ancMode = remember { mutableStateOf(NoiseControlMode.OFF) }
+    val noiseCancelLevel = remember {
+        mutableStateOf(
+            prefs.getInt(
+                TechnicsPodsPrefsKey.NOISE_CANCEL_LEVEL,
+                TechnicsPodsPrefsKey.DEFAULT_NOISE_CANCEL_LEVEL
+            ).coerceIn(0, 100)
+        )
+    }
+    val transparencyLevel = remember {
+        mutableStateOf(
+            prefs.getInt(
+                TechnicsPodsPrefsKey.TRANSPARENCY_LEVEL,
+                TechnicsPodsPrefsKey.DEFAULT_TRANSPARENCY_LEVEL
+            ).coerceIn(0, 100)
+        )
+    }
     val gameMode = remember { mutableStateOf(false) }
     val deviceName = remember { mutableStateOf("") }
 
@@ -128,6 +146,16 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                     TechnicsPodsAction.ACTION_PODS_GAME_MODE_CHANGED -> {
                         gameMode.value = p1.getBooleanExtra("enabled", false)
                     }
+                    TechnicsPodsAction.ACTION_PODS_ANC_LEVEL_CHANGED -> {
+                        noiseCancelLevel.value = p1.getIntExtra(
+                            TechnicsPodsAction.EXTRA_NOISE_CANCEL_LEVEL,
+                            noiseCancelLevel.value
+                        ).coerceIn(0, 100)
+                        transparencyLevel.value = p1.getIntExtra(
+                            TechnicsPodsAction.EXTRA_TRANSPARENCY_LEVEL,
+                            transparencyLevel.value
+                        ).coerceIn(0, 100)
+                    }
                 }
             }
         }
@@ -140,6 +168,7 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
             addAction(TechnicsPodsAction.ACTION_PODS_CONNECTED)
             addAction(TechnicsPodsAction.ACTION_PODS_DISCONNECTED)
             addAction(TechnicsPodsAction.ACTION_PODS_GAME_MODE_CHANGED)
+            addAction(TechnicsPodsAction.ACTION_PODS_ANC_LEVEL_CHANGED)
         }, Context.RECEIVER_EXPORTED)
 
         context.sendBroadcast(Intent(TechnicsPodsAction.ACTION_PODS_UI_INIT).apply {
@@ -194,6 +223,23 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
         }
     }
 
+    fun setAncLevels(nextNoiseCancelLevel: Int, nextTransparencyLevel: Int) {
+        val safeNoiseCancelLevel = nextNoiseCancelLevel.coerceIn(0, 100)
+        val safeTransparencyLevel = nextTransparencyLevel.coerceIn(0, 100)
+        noiseCancelLevel.value = safeNoiseCancelLevel
+        transparencyLevel.value = safeTransparencyLevel
+        prefs.edit()
+            .putInt(TechnicsPodsPrefsKey.NOISE_CANCEL_LEVEL, safeNoiseCancelLevel)
+            .putInt(TechnicsPodsPrefsKey.TRANSPARENCY_LEVEL, safeTransparencyLevel)
+            .apply()
+        Intent(TechnicsPodsAction.ACTION_ANC_LEVEL_SET).apply {
+            putExtra(TechnicsPodsAction.EXTRA_NOISE_CANCEL_LEVEL, safeNoiseCancelLevel)
+            putExtra(TechnicsPodsAction.EXTRA_TRANSPARENCY_LEVEL, safeTransparencyLevel)
+            setPackage("com.android.bluetooth")
+            context.sendBroadcast(this)
+        }
+    }
+
     val dialogBgColor = if (isDarkMode) Color(0xFF1A1A1A) else Color(0xFFF7F7F7)
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
@@ -213,8 +259,16 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                 LandscapePopupBody(
                     batteryParams = batteryParams.value,
                     ancMode = ancMode.value,
+                    noiseCancelLevel = noiseCancelLevel.value,
+                    transparencyLevel = transparencyLevel.value,
                     gameMode = gameMode.value,
                     onAncModeChange = ::setAncMode,
+                    onNoiseCancelLevelChange = {
+                        setAncLevels(it, transparencyLevel.value)
+                    },
+                    onTransparencyLevelChange = {
+                        setAncLevels(noiseCancelLevel.value, it)
+                    },
                     onGameModeChange = ::setGameMode,
                     onMore = onMore,
                     onDone = { showDialog.value = false },
@@ -224,8 +278,16 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                 PortraitPopupBody(
                     batteryParams = batteryParams.value,
                     ancMode = ancMode.value,
+                    noiseCancelLevel = noiseCancelLevel.value,
+                    transparencyLevel = transparencyLevel.value,
                     gameMode = gameMode.value,
                     onAncModeChange = ::setAncMode,
+                    onNoiseCancelLevelChange = {
+                        setAncLevels(it, transparencyLevel.value)
+                    },
+                    onTransparencyLevelChange = {
+                        setAncLevels(noiseCancelLevel.value, it)
+                    },
                     onGameModeChange = ::setGameMode,
                     onMore = onMore,
                     onDone = { showDialog.value = false },
@@ -240,8 +302,12 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
 private fun PortraitPopupBody(
     batteryParams: BatteryParams,
     ancMode: NoiseControlMode,
+    noiseCancelLevel: Int,
+    transparencyLevel: Int,
     gameMode: Boolean,
     onAncModeChange: (NoiseControlMode) -> Unit,
+    onNoiseCancelLevelChange: (Int) -> Unit,
+    onTransparencyLevelChange: (Int) -> Unit,
     onGameModeChange: (Boolean) -> Unit,
     onMore: () -> Unit,
     onDone: () -> Unit,
@@ -257,6 +323,15 @@ private fun PortraitPopupBody(
         Spacer(modifier = Modifier.height(12.dp))
         Card(modifier = Modifier.fillMaxWidth()) {
             AncSwitch(ancMode, onAncModeChange = onAncModeChange, adaptiveModeEnabled = adaptiveModeEnabled)
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Card(modifier = Modifier.fillMaxWidth()) {
+            AncLevelKnobs(
+                noiseCancelLevel = noiseCancelLevel,
+                transparencyLevel = transparencyLevel,
+                onNoiseCancelLevelChange = onNoiseCancelLevelChange,
+                onTransparencyLevelChange = onTransparencyLevelChange
+            )
         }
         Spacer(modifier = Modifier.height(12.dp))
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -290,8 +365,12 @@ private fun PortraitPopupBody(
 private fun LandscapePopupBody(
     batteryParams: BatteryParams,
     ancMode: NoiseControlMode,
+    noiseCancelLevel: Int,
+    transparencyLevel: Int,
     gameMode: Boolean,
     onAncModeChange: (NoiseControlMode) -> Unit,
+    onNoiseCancelLevelChange: (Int) -> Unit,
+    onTransparencyLevelChange: (Int) -> Unit,
     onGameModeChange: (Boolean) -> Unit,
     onMore: () -> Unit,
     onDone: () -> Unit,
@@ -316,6 +395,16 @@ private fun LandscapePopupBody(
                     onAncModeChange = onAncModeChange,
                     compact = true,
                     adaptiveModeEnabled = adaptiveModeEnabled
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(modifier = Modifier.fillMaxWidth()) {
+                AncLevelKnobs(
+                    noiseCancelLevel = noiseCancelLevel,
+                    transparencyLevel = transparencyLevel,
+                    onNoiseCancelLevelChange = onNoiseCancelLevelChange,
+                    onTransparencyLevelChange = onTransparencyLevelChange,
+                    compact = true
                 )
             }
         }

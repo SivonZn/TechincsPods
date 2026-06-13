@@ -63,6 +63,8 @@ object RfcommController {
     private var lastTempBatt = 0
     lateinit var currentBatteryParams: BatteryParams
     private var currentAnc: Int = 1
+    private var currentNoiseCancelLevel: Int = TechnicsPodsPrefsKey.DEFAULT_NOISE_CANCEL_LEVEL
+    private var currentTransparencyLevel: Int = TechnicsPodsPrefsKey.DEFAULT_TRANSPARENCY_LEVEL
     private var currentGameMode: Boolean = false
     private var gameModeImplementation: GameModeImplementation = GameModeImplementation.STANDARD
     private var rfcommConnectionMethod: RfcommConnectionMethod = RfcommConnectionMethod.UUID
@@ -158,6 +160,7 @@ object RfcommController {
                 if (::currentBatteryParams.isInitialized)
                     changeUIBatteryStatus(currentBatteryParams)
                 changeUIAncStatus(currentAnc)
+                changeUIAncLevelStatus()
                 changeUIGameModeStatus(currentGameMode)
                 Intent(TechnicsPodsAction.ACTION_PODS_CONNECTED).apply {
                     this.putExtra("device_name", mDevice.name ?: cachedDeviceName)
@@ -172,6 +175,18 @@ object RfcommController {
             TechnicsPodsAction.ACTION_ANC_SELECT -> {
                 val status = intent.getIntExtra("status", 0)
                 setANCMode(status)
+            }
+            TechnicsPodsAction.ACTION_ANC_LEVEL_SET -> {
+                setAncLevels(
+                    intent.getIntExtra(
+                        TechnicsPodsAction.EXTRA_NOISE_CANCEL_LEVEL,
+                        currentNoiseCancelLevel
+                    ),
+                    intent.getIntExtra(
+                        TechnicsPodsAction.EXTRA_TRANSPARENCY_LEVEL,
+                        currentTransparencyLevel
+                    )
+                )
             }
             TechnicsPodsAction.ACTION_REFRESH_STATUS -> {
                 val allowReconnect = intent.getBooleanExtra(
@@ -284,6 +299,20 @@ object RfcommController {
         }
         if (showConnectionPopupEnabled) {
             showConnectionPopup(context, batteryParams)
+        }
+    }
+
+    private fun changeUIAncLevelStatus() {
+        Intent(TechnicsPodsAction.ACTION_PODS_ANC_LEVEL_CHANGED).apply {
+            putExtra(TechnicsPodsAction.EXTRA_NOISE_CANCEL_LEVEL, currentNoiseCancelLevel)
+            putExtra(TechnicsPodsAction.EXTRA_TRANSPARENCY_LEVEL, currentTransparencyLevel)
+            this.`package` = BuildConfig.APPLICATION_ID
+            this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            mContext!!.sendBroadcast(this)
+        }
+        sendExternalPodsStatusBroadcast(TechnicsPodsAction.ACTION_PODS_ANC_LEVEL_CHANGED) {
+            putExtra(TechnicsPodsAction.EXTRA_NOISE_CANCEL_LEVEL, currentNoiseCancelLevel)
+            putExtra(TechnicsPodsAction.EXTRA_TRANSPARENCY_LEVEL, currentTransparencyLevel)
         }
     }
 
@@ -410,6 +439,14 @@ object RfcommController {
         cachedDeviceName = device.name ?: ""
         // 初始化 Adaptive 模式状态缓存，从 SharedPreferences 读取当前值
         adaptiveModeEnabled = mPrefs.getBoolean("adaptive_mode", true)
+        currentNoiseCancelLevel = mPrefs.getInt(
+            TechnicsPodsPrefsKey.NOISE_CANCEL_LEVEL,
+            TechnicsPodsPrefsKey.DEFAULT_NOISE_CANCEL_LEVEL
+        ).coerceIn(0, 100)
+        currentTransparencyLevel = mPrefs.getInt(
+            TechnicsPodsPrefsKey.TRANSPARENCY_LEVEL,
+            TechnicsPodsPrefsKey.DEFAULT_TRANSPARENCY_LEVEL
+        ).coerceIn(0, 100)
         gameModeImplementation = GameModeImplementation.fromPreference(
             mPrefs.getString(GameModeImplementation.PREF_KEY, null)
         )
@@ -427,6 +464,7 @@ object RfcommController {
 
         context.registerReceiver(broadcastReceiver, IntentFilter().apply {
             this.addAction(TechnicsPodsAction.ACTION_ANC_SELECT)
+            this.addAction(TechnicsPodsAction.ACTION_ANC_LEVEL_SET)
             this.addAction(TechnicsPodsAction.ACTION_PODS_UI_INIT)
             this.addAction(TechnicsPodsAction.ACTION_REFRESH_STATUS)
             this.addAction(TechnicsPodsAction.ACTION_GAME_MODE_SET)
@@ -732,7 +770,11 @@ object RfcommController {
         currentAnc = mode
         changeUIAncStatus(mode)
         CoroutineScope(Dispatchers.IO).launch {
-            val packets = TechnicsPackets.setAncModeSequence(mode)
+            val packets = TechnicsPackets.setAncModeSequence(
+                mode,
+                currentNoiseCancelLevel,
+                currentTransparencyLevel
+            )
             if (packets.isEmpty()) return@launch
             packets.forEachIndexed { index, packet ->
                 if (!sendPacketSafe(packet, "set ANC mode $mode step ${index + 1}", true)) {
@@ -740,6 +782,35 @@ object RfcommController {
                 }
                 delay(80)
             }
+        }
+    }
+
+    fun setAncLevels(noiseCancelLevel: Int, transparencyLevel: Int) {
+        currentNoiseCancelLevel = noiseCancelLevel.coerceIn(0, 100)
+        currentTransparencyLevel = transparencyLevel.coerceIn(0, 100)
+        changeUIAncLevelStatus()
+
+        if (::mPrefs.isInitialized) {
+            mPrefs.edit()
+                .putInt(TechnicsPodsPrefsKey.NOISE_CANCEL_LEVEL, currentNoiseCancelLevel)
+                .putInt(TechnicsPodsPrefsKey.TRANSPARENCY_LEVEL, currentTransparencyLevel)
+                .apply()
+        }
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val packet = when (currentAnc) {
+                2, 4 -> TechnicsPackets.setNoiseCancelLevel(
+                    currentNoiseCancelLevel,
+                    currentTransparencyLevel
+                )
+                3 -> TechnicsPackets.setTransparencyLevel(
+                    currentNoiseCancelLevel,
+                    currentTransparencyLevel
+                )
+                else -> null
+            } ?: return@launch
+
+            sendPacketSafe(packet, "set ANC level", true)
         }
     }
 

@@ -48,6 +48,12 @@ class AppRfcommController {
     private val _ancMode = MutableStateFlow(NoiseControlMode.OFF)
     val ancMode: StateFlow<NoiseControlMode> = _ancMode
 
+    private val _noiseCancelLevel = MutableStateFlow(100)
+    val noiseCancelLevel: StateFlow<Int> = _noiseCancelLevel
+
+    private val _transparencyLevel = MutableStateFlow(50)
+    val transparencyLevel: StateFlow<Int> = _transparencyLevel
+
     private val _deviceName = MutableStateFlow("")
     val deviceName: StateFlow<String> = _deviceName
 
@@ -171,11 +177,35 @@ class AppRfcommController {
     fun setANCMode(mode: NoiseControlMode) {
         _ancMode.value = mode
         scope.launch {
-            TechnicsPackets.setAncModeSequence(noiseControlModeToInt(mode)).forEachIndexed { index, packet ->
+            TechnicsPackets.setAncModeSequence(
+                noiseControlModeToInt(mode),
+                _noiseCancelLevel.value,
+                _transparencyLevel.value
+            ).forEachIndexed { index, packet ->
                 sendPacket(packet)
                 Log.d(TAG, "setANCMode sent step ${index + 1} for $mode")
                 delay(80)
             }
+        }
+    }
+
+    fun setAncLevels(noiseCancelLevel: Int, transparencyLevel: Int) {
+        _noiseCancelLevel.value = noiseCancelLevel.coerceIn(0, 100)
+        _transparencyLevel.value = transparencyLevel.coerceIn(0, 100)
+        scope.launch {
+            val packet = when (_ancMode.value) {
+                NoiseControlMode.NOISE_CANCELLATION,
+                NoiseControlMode.ADAPTIVE -> TechnicsPackets.setNoiseCancelLevel(
+                    _noiseCancelLevel.value,
+                    _transparencyLevel.value
+                )
+                NoiseControlMode.TRANSPARENCY -> TechnicsPackets.setTransparencyLevel(
+                    _noiseCancelLevel.value,
+                    _transparencyLevel.value
+                )
+                NoiseControlMode.OFF -> null
+            } ?: return@launch
+            sendPacket(packet)
         }
     }
 
@@ -226,6 +256,8 @@ class AppRfcommController {
         _connectionState.value = ConnectionState.DISCONNECTED
         _batteryParams.value = BatteryParams()
         _ancMode.value = NoiseControlMode.OFF
+        _noiseCancelLevel.value = 100
+        _transparencyLevel.value = 50
         _deviceName.value = ""
         _gameMode.value = false
     }

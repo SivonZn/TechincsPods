@@ -8,6 +8,8 @@ object TechnicsPodsPrefsKey {
     const val CONNECTION_POPUP_DISMISS_SECONDS = "connection_popup_dismiss_seconds"
     const val SHOW_CONNECTION_NOTIFICATION = "show_connection_notification"
     const val NOTIFICATION_ISLAND_STYLE = "notification_island_style"
+    const val NOISE_CANCEL_LEVEL = "noise_cancel_level"
+    const val TRANSPARENCY_LEVEL = "transparency_level"
 
     const val DEFAULT_SHOW_CONNECTION_BATTERY_ISLAND = true
     const val DEFAULT_SHOW_CONNECTION_POPUP = false
@@ -15,4 +17,6 @@ object TechnicsPodsPrefsKey {
     val CONNECTION_POPUP_DISMISS_SECOND_OPTIONS = listOf(3, 5, 8, 10, 15, 30)
     const val DEFAULT_SHOW_CONNECTION_NOTIFICATION = true
     const val DEFAULT_NOTIFICATION_ISLAND_STYLE = false
+    const val DEFAULT_NOISE_CANCEL_LEVEL = 100
+    const val DEFAULT_TRANSPARENCY_LEVEL = 50
 }

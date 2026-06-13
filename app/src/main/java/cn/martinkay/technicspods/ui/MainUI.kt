@@ -96,6 +96,22 @@ fun MainUI(
     val openTechnics = remember { mutableStateOf(prefs.getBoolean("open_heytap", false)) }
     // Adaptive模式偏好设置（持久化存储），默认开启
     val adaptiveMode = remember { mutableStateOf(prefs.getBoolean("adaptive_mode", true)) }
+    val noiseCancelLevel = remember {
+        mutableStateOf(
+            prefs.getInt(
+                TechnicsPodsPrefsKey.NOISE_CANCEL_LEVEL,
+                TechnicsPodsPrefsKey.DEFAULT_NOISE_CANCEL_LEVEL
+            ).coerceIn(0, 100)
+        )
+    }
+    val transparencyLevel = remember {
+        mutableStateOf(
+            prefs.getInt(
+                TechnicsPodsPrefsKey.TRANSPARENCY_LEVEL,
+                TechnicsPodsPrefsKey.DEFAULT_TRANSPARENCY_LEVEL
+            ).coerceIn(0, 100)
+        )
+    }
     val rfcommConnectionMethod = remember {
         mutableStateOf(
             RfcommConnectionMethod.fromPreference(
@@ -156,6 +172,8 @@ fun MainUI(
     val appConnState by appController.connectionState.collectAsState()
     val appBattery by appController.batteryParams.collectAsState()
     val appAnc by appController.ancMode.collectAsState()
+    val appNoiseCancelLevel by appController.noiseCancelLevel.collectAsState()
+    val appTransparencyLevel by appController.transparencyLevel.collectAsState()
     val appDeviceName by appController.deviceName.collectAsState()
     val appGameMode by appController.gameMode.collectAsState()
 
@@ -166,6 +184,8 @@ fun MainUI(
 
     val displayBattery = if (isStandaloneConnected) appBattery else batteryParams.value
     val displayAnc = if (isStandaloneConnected) appAnc else ancMode.value
+    val displayNoiseCancelLevel = if (isStandaloneConnected) appNoiseCancelLevel else noiseCancelLevel.value
+    val displayTransparencyLevel = if (isStandaloneConnected) appTransparencyLevel else transparencyLevel.value
     val displayGameMode = if (isStandaloneConnected) appGameMode else gameMode.value
     val displayTitle = when {
         hookConnected.value -> mainTitle.value
@@ -205,6 +225,17 @@ fun MainUI(
                         gameMode.value = p1.getBooleanExtra("enabled", false)
                     }
 
+                    TechnicsPodsAction.ACTION_PODS_ANC_LEVEL_CHANGED -> {
+                        noiseCancelLevel.value = p1.getIntExtra(
+                            TechnicsPodsAction.EXTRA_NOISE_CANCEL_LEVEL,
+                            noiseCancelLevel.value
+                        ).coerceIn(0, 100)
+                        transparencyLevel.value = p1.getIntExtra(
+                            TechnicsPodsAction.EXTRA_TRANSPARENCY_LEVEL,
+                            transparencyLevel.value
+                        ).coerceIn(0, 100)
+                    }
+
                     TechnicsPodsAction.ACTION_PODS_CONNECTED -> {
                         val deviceName = p1.getStringExtra("device_name")
                         mainTitle.value = deviceName ?: ""
@@ -229,6 +260,7 @@ fun MainUI(
             addAction(TechnicsPodsAction.ACTION_PODS_ANC_CHANGED)
             addAction(TechnicsPodsAction.ACTION_PODS_BATTERY_CHANGED)
             addAction(TechnicsPodsAction.ACTION_PODS_GAME_MODE_CHANGED)
+            addAction(TechnicsPodsAction.ACTION_PODS_ANC_LEVEL_CHANGED)
             addAction(TechnicsPodsAction.ACTION_PODS_CONNECTED)
             addAction(TechnicsPodsAction.ACTION_PODS_DISCONNECTED)
         }, Context.RECEIVER_EXPORTED)
@@ -281,7 +313,31 @@ fun MainUI(
         }
     }
 
+    fun setAncLevels(nextNoiseCancelLevel: Int, nextTransparencyLevel: Int) {
+        val safeNoiseCancelLevel = nextNoiseCancelLevel.coerceIn(0, 100)
+        val safeTransparencyLevel = nextTransparencyLevel.coerceIn(0, 100)
+        noiseCancelLevel.value = safeNoiseCancelLevel
+        transparencyLevel.value = safeTransparencyLevel
+        prefs.edit()
+            .putInt(TechnicsPodsPrefsKey.NOISE_CANCEL_LEVEL, safeNoiseCancelLevel)
+            .putInt(TechnicsPodsPrefsKey.TRANSPARENCY_LEVEL, safeTransparencyLevel)
+            .apply()
+
+        if (isStandaloneConnected) {
+            appController.setAncLevels(safeNoiseCancelLevel, safeTransparencyLevel)
+            return
+        }
+
+        Intent(TechnicsPodsAction.ACTION_ANC_LEVEL_SET).apply {
+            putExtra(TechnicsPodsAction.EXTRA_NOISE_CANCEL_LEVEL, safeNoiseCancelLevel)
+            putExtra(TechnicsPodsAction.EXTRA_TRANSPARENCY_LEVEL, safeTransparencyLevel)
+            setPackage("com.android.bluetooth")
+            context.sendBroadcast(this)
+        }
+    }
+
     fun onDeviceSelected(device: BluetoothDevice) {
+        appController.setAncLevels(noiseCancelLevel.value, transparencyLevel.value)
         appController.connect(
             device = device,
             connectionMethod = rfcommConnectionMethod.value,
@@ -385,6 +441,14 @@ fun MainUI(
                             batteryParams = displayBattery,
                             ancMode = displayAnc,
                             onAncModeChange = { setAncMode(it) },
+                            noiseCancelLevel = displayNoiseCancelLevel,
+                            transparencyLevel = displayTransparencyLevel,
+                            onNoiseCancelLevelChange = {
+                                setAncLevels(it, displayTransparencyLevel)
+                            },
+                            onTransparencyLevelChange = {
+                                setAncLevels(displayNoiseCancelLevel, it)
+                            },
                             gameMode = displayGameMode,
                             onGameModeChange = { setGameMode(it) },
                             adaptiveModeEnabled = adaptiveMode.value

@@ -17,7 +17,11 @@ object TechnicsPodsAction {
     // Adaptive模式开关状态变更广播，用于跨进程同步偏好设置（App → com.android.bluetooth / com.xiaomi.bluetooth）
     const val ACTION_ADAPTIVE_MODE_CHANGED = "chen.action.technicspods.adaptive_mode_changed"
     const val ACTION_NOTIFICATION_SETTINGS_CHANGED = "chen.action.technicspods.notification_settings_changed"
+    const val ACTION_ANC_LEVEL_SET = "chen.action.technicspods.anc_level_set"
+    const val ACTION_PODS_ANC_LEVEL_CHANGED = "chen.action.technicspods.pods_anc_level_changed"
 
     const val EXTRA_ALLOW_RFCOMM_RECONNECT = "allow_rfcomm_reconnect"
     const val EXTRA_RFCOMM_CONNECTED = "rfcomm_connected"
+    const val EXTRA_NOISE_CANCEL_LEVEL = "noise_cancel_level"
+    const val EXTRA_TRANSPARENCY_LEVEL = "transparency_level"
 }
