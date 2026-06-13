@@ -198,6 +198,7 @@ class AppRfcommController {
                 Log.d(TAG, "setANCMode sent step ${index + 1} for $mode")
                 delay(80)
             }
+            sendAncStatusQueryPackets()
         }
     }
 
@@ -218,6 +219,8 @@ class AppRfcommController {
                 NoiseControlMode.OFF -> null
             } ?: return@launch
             sendPacket(packet)
+            delay(80)
+            sendPacket(TechnicsPackets.QUERY_OUTSIDE_CTRL)
         }
     }
 
@@ -254,6 +257,12 @@ class AppRfcommController {
             delay(80)
             sendPacket(TechnicsPackets.QUERY_ADAPTIVE_ANC)
         }
+    }
+
+    private suspend fun sendAncStatusQueryPackets() {
+        sendPacket(TechnicsPackets.QUERY_OUTSIDE_CTRL)
+        delay(80)
+        sendPacket(TechnicsPackets.QUERY_ADAPTIVE_ANC)
     }
 
     /**

@@ -76,8 +76,8 @@ object TechnicsPackets {
             RACE_ID_SET_OUTSIDE_CTRL,
             byteArrayOf(
                 mode.toByte(),
-                outsideControlLevel(noiseCancelLevel).toByte(),
-                outsideControlLevel(ambientLevel).toByte()
+                noiseCancelLevel.coerceIn(0, 100).toByte(),
+                ambientLevel.coerceIn(0, 100).toByte()
             )
         )
     }
@@ -111,24 +111,10 @@ object TechnicsPackets {
     ): List<ByteArray> {
         return when (mode) {
             // OppoPods UI mapping: 1=off, 2=noise cancelling, 3=transparency, 4=adaptive.
-            1 -> listOf(
-                SET_ADAPTIVE_ANC_OFF,
-                setOutsideControl(OUTSIDE_CTRL_UNSET, noiseCancelLevel, ambientLevel)
-            )
-            2 -> listOf(
-                SET_ADAPTIVE_ANC_OFF,
-                setNoiseCancelLevel(noiseCancelLevel, ambientLevel),
-                SET_NOISE_CANCELING_ADJUST_DEFAULT
-            )
-            3 -> listOf(
-                SET_ADAPTIVE_ANC_OFF,
-                SET_AMBIENT_MODE_TRANSPARENT,
-                setTransparencyLevel(noiseCancelLevel, ambientLevel)
-            )
-            4 -> listOf(
-                setNoiseCancelLevel(noiseCancelLevel, ambientLevel),
-                SET_ADAPTIVE_ANC_ON
-            )
+            1 -> listOf(setOutsideControl(OUTSIDE_CTRL_UNSET, noiseCancelLevel, ambientLevel))
+            2 -> listOf(setNoiseCancelLevel(noiseCancelLevel, ambientLevel))
+            3 -> listOf(setTransparencyLevel(noiseCancelLevel, ambientLevel))
+            4 -> listOf(SET_ADAPTIVE_ANC_ON)
             else -> emptyList()
         }
     }
@@ -138,10 +124,6 @@ object TechnicsPackets {
             RACE_ID_SET_ADAPTIVE_ANC,
             byteArrayOf((if (enabled) ADAPTIVE_ANC_ON else ADAPTIVE_ANC_OFF).toByte())
         )
-    }
-
-    private fun outsideControlLevel(level: Int): Int {
-        return level.coerceIn(1, 100)
     }
 }
 

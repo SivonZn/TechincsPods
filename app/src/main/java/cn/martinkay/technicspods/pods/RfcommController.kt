@@ -803,6 +803,7 @@ object RfcommController {
                 }
                 delay(80)
             }
+            sendAncStatusQueryPackets(allowReconnect = false)
         }
     }
 
@@ -832,6 +833,8 @@ object RfcommController {
             } ?: return@launch
 
             sendPacketSafe(packet, "set ANC level", true)
+            delay(80)
+            sendPacketSafe(TechnicsPackets.QUERY_OUTSIDE_CTRL, "query outside control after set level", false)
         }
     }
 
@@ -848,6 +851,12 @@ object RfcommController {
         delay(80)
         if (!sendPacketSafe(TechnicsPackets.QUERY_CRADLE_BATTERY, "query cradle battery", allowReconnect)) return
         delay(80)
+        if (!sendPacketSafe(TechnicsPackets.QUERY_OUTSIDE_CTRL, "query outside control", allowReconnect)) return
+        delay(80)
+        sendPacketSafe(TechnicsPackets.QUERY_ADAPTIVE_ANC, "query adaptive ANC", allowReconnect)
+    }
+
+    private suspend fun sendAncStatusQueryPackets(allowReconnect: Boolean = false) {
         if (!sendPacketSafe(TechnicsPackets.QUERY_OUTSIDE_CTRL, "query outside control", allowReconnect)) return
         delay(80)
         sendPacketSafe(TechnicsPackets.QUERY_ADAPTIVE_ANC, "query adaptive ANC", allowReconnect)
