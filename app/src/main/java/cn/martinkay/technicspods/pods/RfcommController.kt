@@ -671,8 +671,7 @@ object RfcommController {
 
         val ancResult = TechnicsAncParser.parse(packet)
         if (ancResult != null) {
-            currentAnc = ancResult
-            changeUIAncStatus(ancResult)
+            handleAncChanged(ancResult)
             return
         }
 
@@ -753,6 +752,28 @@ object RfcommController {
         Log.d(TAG, "setGameMode ignored: Technics game-mode protocol is not implemented")
     }
 
+    private fun handleAncChanged(result: TechnicsAncParser.AncResult) {
+        result.noiseCancelLevel?.let {
+            currentNoiseCancelLevel = it.coerceIn(0, 100)
+        }
+        result.transparencyLevel?.let {
+            currentTransparencyLevel = it.coerceIn(0, 100)
+        }
+        if (result.noiseCancelLevel != null || result.transparencyLevel != null) {
+            changeUIAncLevelStatus()
+            if (::mPrefs.isInitialized) {
+                mPrefs.edit()
+                    .putInt(TechnicsPodsPrefsKey.NOISE_CANCEL_LEVEL, currentNoiseCancelLevel)
+                    .putInt(TechnicsPodsPrefsKey.TRANSPARENCY_LEVEL, currentTransparencyLevel)
+                    .apply()
+            }
+        }
+        result.mode?.let {
+            currentAnc = it
+            changeUIAncStatus(it)
+        }
+    }
+
     fun cycleAnc() {
         // 使用广播同步的缓存值，避免 SharedPreferences 跨进程缓存导致读取过时值
         val next = when (currentAnc) {
@@ -786,8 +807,8 @@ object RfcommController {
     }
 
     fun setAncLevels(noiseCancelLevel: Int, transparencyLevel: Int) {
-        currentNoiseCancelLevel = noiseCancelLevel.coerceIn(0, 100)
-        currentTransparencyLevel = transparencyLevel.coerceIn(0, 100)
+        currentNoiseCancelLevel = noiseCancelLevel.coerceIn(1, 100)
+        currentTransparencyLevel = transparencyLevel.coerceIn(1, 100)
         changeUIAncLevelStatus()
 
         if (::mPrefs.isInitialized) {
@@ -825,7 +846,11 @@ object RfcommController {
         delay(80)
         if (!sendPacketSafe(TechnicsPackets.QUERY_CLIENT_BATTERY, "query client battery", allowReconnect)) return
         delay(80)
-        sendPacketSafe(TechnicsPackets.QUERY_CRADLE_BATTERY, "query cradle battery", allowReconnect)
+        if (!sendPacketSafe(TechnicsPackets.QUERY_CRADLE_BATTERY, "query cradle battery", allowReconnect)) return
+        delay(80)
+        if (!sendPacketSafe(TechnicsPackets.QUERY_OUTSIDE_CTRL, "query outside control", allowReconnect)) return
+        delay(80)
+        sendPacketSafe(TechnicsPackets.QUERY_ADAPTIVE_ANC, "query adaptive ANC", allowReconnect)
     }
 
     /**

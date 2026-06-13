@@ -224,8 +224,8 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
     }
 
     fun setAncLevels(nextNoiseCancelLevel: Int, nextTransparencyLevel: Int) {
-        val safeNoiseCancelLevel = nextNoiseCancelLevel.coerceIn(0, 100)
-        val safeTransparencyLevel = nextTransparencyLevel.coerceIn(0, 100)
+        val safeNoiseCancelLevel = nextNoiseCancelLevel.coerceIn(1, 100)
+        val safeTransparencyLevel = nextTransparencyLevel.coerceIn(1, 100)
         noiseCancelLevel.value = safeNoiseCancelLevel
         transparencyLevel.value = safeTransparencyLevel
         prefs.edit()
@@ -241,8 +241,8 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
     }
 
     fun previewAncLevels(nextNoiseCancelLevel: Int, nextTransparencyLevel: Int) {
-        noiseCancelLevel.value = nextNoiseCancelLevel.coerceIn(0, 100)
-        transparencyLevel.value = nextTransparencyLevel.coerceIn(0, 100)
+        noiseCancelLevel.value = nextNoiseCancelLevel.coerceIn(1, 100)
+        transparencyLevel.value = nextTransparencyLevel.coerceIn(1, 100)
     }
 
     val dialogBgColor = if (isDarkMode) Color(0xFF1A1A1A) else Color(0xFFF7F7F7)

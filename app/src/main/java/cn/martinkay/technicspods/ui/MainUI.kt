@@ -314,8 +314,8 @@ fun MainUI(
     }
 
     fun setAncLevels(nextNoiseCancelLevel: Int, nextTransparencyLevel: Int) {
-        val safeNoiseCancelLevel = nextNoiseCancelLevel.coerceIn(0, 100)
-        val safeTransparencyLevel = nextTransparencyLevel.coerceIn(0, 100)
+        val safeNoiseCancelLevel = nextNoiseCancelLevel.coerceIn(1, 100)
+        val safeTransparencyLevel = nextTransparencyLevel.coerceIn(1, 100)
         noiseCancelLevel.value = safeNoiseCancelLevel
         transparencyLevel.value = safeTransparencyLevel
         prefs.edit()
@@ -337,8 +337,8 @@ fun MainUI(
     }
 
     fun previewAncLevels(nextNoiseCancelLevel: Int, nextTransparencyLevel: Int) {
-        noiseCancelLevel.value = nextNoiseCancelLevel.coerceIn(0, 100)
-        transparencyLevel.value = nextTransparencyLevel.coerceIn(0, 100)
+        noiseCancelLevel.value = nextNoiseCancelLevel.coerceIn(1, 100)
+        transparencyLevel.value = nextTransparencyLevel.coerceIn(1, 100)
     }
 
     fun onDeviceSelected(device: BluetoothDevice) {
