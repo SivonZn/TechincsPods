@@ -63,6 +63,7 @@ object RfcommController {
     private var lastTempBatt = 0
     lateinit var currentBatteryParams: BatteryParams
     private var currentAnc: Int = 1
+    private var currentAncSynced: Boolean = false
     private var currentNoiseCancelLevel: Int = TechnicsPodsPrefsKey.DEFAULT_NOISE_CANCEL_LEVEL
     private var currentTransparencyLevel: Int = TechnicsPodsPrefsKey.DEFAULT_TRANSPARENCY_LEVEL
     private var currentGameMode: Boolean = false
@@ -157,9 +158,14 @@ object RfcommController {
         when (intent.action) {
             TechnicsPodsAction.ACTION_PODS_UI_INIT -> {
                 Log.i(TAG, "UI Init")
+                CoroutineScope(Dispatchers.IO).launch {
+                    sendAncStatusQueryPackets(allowReconnect = true)
+                }
                 if (::currentBatteryParams.isInitialized)
                     changeUIBatteryStatus(currentBatteryParams)
-                changeUIAncStatus(currentAnc)
+                if (currentAncSynced) {
+                    changeUIAncStatus(currentAnc)
+                }
                 changeUIAncLevelStatus()
                 changeUIGameModeStatus(currentGameMode)
                 Intent(TechnicsPodsAction.ACTION_PODS_CONNECTED).apply {
@@ -705,6 +711,7 @@ object RfcommController {
         pendingConnectionToastJob = null
         lastKnownCaseBattery = 0
         lastKnownCaseCharging = false
+        currentAncSynced = false
         cachedDeviceName = ""
         mContext = null
         MediaControl.mContext = null
@@ -770,6 +777,7 @@ object RfcommController {
         }
         result.mode?.let {
             currentAnc = it
+            currentAncSynced = true
             changeUIAncStatus(it)
         }
     }
@@ -789,6 +797,7 @@ object RfcommController {
         Log.d(TAG, "setANCMode: $mode")
         if (mode !in 1..4) return
         currentAnc = mode
+        currentAncSynced = true
         changeUIAncStatus(mode)
         CoroutineScope(Dispatchers.IO).launch {
             val packets = TechnicsPackets.setAncModeSequence(
@@ -845,15 +854,13 @@ object RfcommController {
     }
 
     private suspend fun sendStatusQueryPackets(allowReconnect: Boolean = false) {
-        if (!sendPacketSafe(TechnicsPackets.QUERY_AGENT_BATTERY, "query agent battery", allowReconnect)) return
+        sendAncStatusQueryPackets(allowReconnect)
         delay(80)
-        if (!sendPacketSafe(TechnicsPackets.QUERY_CLIENT_BATTERY, "query client battery", allowReconnect)) return
+        sendPacketSafe(TechnicsPackets.QUERY_AGENT_BATTERY, "query agent battery", allowReconnect)
         delay(80)
-        if (!sendPacketSafe(TechnicsPackets.QUERY_CRADLE_BATTERY, "query cradle battery", allowReconnect)) return
+        sendPacketSafe(TechnicsPackets.QUERY_CLIENT_BATTERY, "query client battery", allowReconnect)
         delay(80)
-        if (!sendPacketSafe(TechnicsPackets.QUERY_OUTSIDE_CTRL, "query outside control", allowReconnect)) return
-        delay(80)
-        sendPacketSafe(TechnicsPackets.QUERY_ADAPTIVE_ANC, "query adaptive ANC", allowReconnect)
+        sendPacketSafe(TechnicsPackets.QUERY_CRADLE_BATTERY, "query cradle battery", allowReconnect)
     }
 
     private suspend fun sendAncStatusQueryPackets(allowReconnect: Boolean = false) {

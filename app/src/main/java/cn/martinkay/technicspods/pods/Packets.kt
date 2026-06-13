@@ -111,10 +111,24 @@ object TechnicsPackets {
     ): List<ByteArray> {
         return when (mode) {
             // OppoPods UI mapping: 1=off, 2=noise cancelling, 3=transparency, 4=adaptive.
-            1 -> listOf(setOutsideControl(OUTSIDE_CTRL_UNSET, noiseCancelLevel, ambientLevel))
-            2 -> listOf(setNoiseCancelLevel(noiseCancelLevel, ambientLevel))
-            3 -> listOf(setTransparencyLevel(noiseCancelLevel, ambientLevel))
-            4 -> listOf(SET_ADAPTIVE_ANC_ON)
+            1 -> listOf(
+                SET_ADAPTIVE_ANC_OFF,
+                setOutsideControl(OUTSIDE_CTRL_UNSET)
+            )
+            2 -> listOf(
+                SET_ADAPTIVE_ANC_OFF,
+                setNoiseCancelLevel(noiseCancelLevel, ambientLevel),
+                SET_NOISE_CANCELING_ADJUST_DEFAULT
+            )
+            3 -> listOf(
+                SET_ADAPTIVE_ANC_OFF,
+                SET_AMBIENT_MODE_TRANSPARENT,
+                setTransparencyLevel(noiseCancelLevel, ambientLevel)
+            )
+            4 -> listOf(
+                setNoiseCancelLevel(noiseCancelLevel, ambientLevel),
+                SET_ADAPTIVE_ANC_ON
+            )
             else -> emptyList()
         }
     }

@@ -247,15 +247,13 @@ class AppRfcommController {
      */
     private fun queryStatus() {
         scope.launch {
+            sendAncStatusQueryPackets()
+            delay(80)
             sendPacket(TechnicsPackets.QUERY_AGENT_BATTERY)
             delay(80)
             sendPacket(TechnicsPackets.QUERY_CLIENT_BATTERY)
             delay(80)
             sendPacket(TechnicsPackets.QUERY_CRADLE_BATTERY)
-            delay(80)
-            sendPacket(TechnicsPackets.QUERY_OUTSIDE_CTRL)
-            delay(80)
-            sendPacket(TechnicsPackets.QUERY_ADAPTIVE_ANC)
         }
     }
 
