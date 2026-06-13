@@ -151,20 +151,8 @@ class AppRfcommController {
 
         val ancResult = TechnicsAncParser.parse(packet)
         if (ancResult != null) {
-            handleAncChanged(ancResult)
+            _ancMode.value = intToNoiseControlMode(ancResult)
             return
-        }
-    }
-
-    private fun handleAncChanged(result: TechnicsAncParser.AncResult) {
-        result.noiseCancelLevel?.let {
-            _noiseCancelLevel.value = it.coerceIn(0, 100)
-        }
-        result.transparencyLevel?.let {
-            _transparencyLevel.value = it.coerceIn(0, 100)
-        }
-        result.mode?.let {
-            _ancMode.value = intToNoiseControlMode(it)
         }
     }
 
@@ -198,13 +186,12 @@ class AppRfcommController {
                 Log.d(TAG, "setANCMode sent step ${index + 1} for $mode")
                 delay(80)
             }
-            sendAncStatusQueryPackets()
         }
     }
 
     fun setAncLevels(noiseCancelLevel: Int, transparencyLevel: Int) {
-        _noiseCancelLevel.value = noiseCancelLevel.coerceIn(1, 100)
-        _transparencyLevel.value = transparencyLevel.coerceIn(1, 100)
+        _noiseCancelLevel.value = noiseCancelLevel.coerceIn(0, 100)
+        _transparencyLevel.value = transparencyLevel.coerceIn(0, 100)
         scope.launch {
             val packet = when (_ancMode.value) {
                 NoiseControlMode.NOISE_CANCELLATION,
@@ -219,8 +206,6 @@ class AppRfcommController {
                 NoiseControlMode.OFF -> null
             } ?: return@launch
             sendPacket(packet)
-            delay(80)
-            sendPacket(TechnicsPackets.QUERY_OUTSIDE_CTRL)
         }
     }
 
@@ -247,20 +232,12 @@ class AppRfcommController {
      */
     private fun queryStatus() {
         scope.launch {
-            sendAncStatusQueryPackets()
-            delay(80)
             sendPacket(TechnicsPackets.QUERY_AGENT_BATTERY)
             delay(80)
             sendPacket(TechnicsPackets.QUERY_CLIENT_BATTERY)
             delay(80)
             sendPacket(TechnicsPackets.QUERY_CRADLE_BATTERY)
         }
-    }
-
-    private suspend fun sendAncStatusQueryPackets() {
-        sendPacket(TechnicsPackets.QUERY_OUTSIDE_CTRL)
-        delay(80)
-        sendPacket(TechnicsPackets.QUERY_ADAPTIVE_ANC)
     }
 
     /**

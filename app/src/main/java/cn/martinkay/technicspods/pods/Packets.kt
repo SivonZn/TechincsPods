@@ -11,11 +11,9 @@ object TechnicsPackets {
     private const val TYPE_COMMAND_NEED_RESPONSE = 0x5A
     private const val RACE_ID_TWS_GET_BATTERY = 0x0CD6
     private const val RACE_ID_GET_CRADLE_BATTERY = 0x0040
-    private const val RACE_ID_GET_OUTSIDE_CTRL = 0x000A
     private const val RACE_ID_SET_OUTSIDE_CTRL = 0x000B
     private const val RACE_ID_SET_AMBIENT_MODE = 0x0022
     private const val RACE_ID_SET_NOISE_CANCELING_ADJUST = 0x0039
-    private const val RACE_ID_GET_ADAPTIVE_ANC = 0x0067
     private const val RACE_ID_SET_ADAPTIVE_ANC = 0x0068
 
     private const val OUTSIDE_CTRL_UNSET = 0x00
@@ -50,8 +48,6 @@ object TechnicsPackets {
     val QUERY_AGENT_BATTERY: ByteArray = racePacket(RACE_ID_TWS_GET_BATTERY, byteArrayOf(0x00))
     val QUERY_CLIENT_BATTERY: ByteArray = racePacket(RACE_ID_TWS_GET_BATTERY, byteArrayOf(0x01))
     val QUERY_CRADLE_BATTERY: ByteArray = racePacket(RACE_ID_GET_CRADLE_BATTERY)
-    val QUERY_OUTSIDE_CTRL: ByteArray = racePacket(RACE_ID_GET_OUTSIDE_CTRL)
-    val QUERY_ADAPTIVE_ANC: ByteArray = racePacket(RACE_ID_GET_ADAPTIVE_ANC)
 
     val SET_ADAPTIVE_ANC_OFF: ByteArray = setAdaptiveAnc(false)
     val SET_ADAPTIVE_ANC_ON: ByteArray = setAdaptiveAnc(true)
@@ -88,8 +84,8 @@ object TechnicsPackets {
     ): ByteArray {
         return setOutsideControl(
             OUTSIDE_CTRL_NOISE_CANCELLING,
-            level,
-            ambientLevel
+            level.coerceIn(0, 100),
+            ambientLevel.coerceIn(0, 100)
         )
     }
 
@@ -99,8 +95,8 @@ object TechnicsPackets {
     ): ByteArray {
         return setOutsideControl(
             OUTSIDE_CTRL_AMBIENT,
-            noiseCancelLevel,
-            level
+            noiseCancelLevel.coerceIn(0, 100),
+            level.coerceIn(0, 100)
         )
     }
 
@@ -257,41 +253,29 @@ object TechnicsAncParser {
     private const val OUTSIDE_CTRL_AMBIENT = 0x02
     private const val ADAPTIVE_ANC_ON = 0x01
 
-    data class AncResult(
-        val mode: Int? = null,
-        val noiseCancelLevel: Int? = null,
-        val transparencyLevel: Int? = null
-    )
-
-    fun parse(data: ByteArray): AncResult? {
+    fun parse(data: ByteArray): Int? {
         if (data.size < 7 || data[0] != 0x05.toByte()) return null
         if ((data[6].toInt() and 0xFF) != STATUS_SUCCESS) return null
 
         return when (raceId(data)) {
+            RACE_ID_SET_ADAPTIVE_ANC,
             RACE_ID_GET_ADAPTIVE_ANC -> {
-                if (data.size > 7 && (data[7].toInt() and 0xFF) == ADAPTIVE_ANC_ON) {
-                    AncResult(mode = 4)
-                } else {
-                    null
-                }
+                if (data.size > 7 && (data[7].toInt() and 0xFF) == ADAPTIVE_ANC_ON) 4 else null
             }
+            RACE_ID_SET_OUTSIDE_CTRL,
             RACE_ID_GET_OUTSIDE_CTRL -> {
-                if (data.size < 10) return null
-                val outsideMode = data[7].toInt() and 0xFF
-                val mode = when (outsideMode) {
+                val outsideMode = when {
+                    data.size > 7 -> data[7].toInt() and 0xFF
+                    data.size == 7 -> return null
+                    else -> return null
+                }
+                when (outsideMode) {
                     OUTSIDE_CTRL_UNSET -> 1
                     OUTSIDE_CTRL_NOISE_CANCELLING -> 2
                     OUTSIDE_CTRL_AMBIENT -> 3
                     else -> null
                 }
-                AncResult(
-                    mode = mode,
-                    noiseCancelLevel = (data[8].toInt() and 0xFF).coerceIn(0, 100),
-                    transparencyLevel = (data[9].toInt() and 0xFF).coerceIn(0, 100)
-                )
             }
-            RACE_ID_SET_OUTSIDE_CTRL,
-            RACE_ID_SET_ADAPTIVE_ANC -> null
             else -> null
         }
     }
