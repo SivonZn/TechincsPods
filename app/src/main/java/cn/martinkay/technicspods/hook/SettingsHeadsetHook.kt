@@ -7,8 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import cn.martinkay.technicspods.utils.TechnicsDeviceMatcher
 import cn.martinkay.technicspods.utils.miuiStrongToast.data.BatteryParams
@@ -22,7 +21,7 @@ object SettingsHeadsetHook : HookContext() {
     private const val FAKE_DEVICE_ID = "01010901"
     private const val FAKE_SUPPORT = "$FAKE_DEVICE_ID,000000000000000010000000"
     private const val PREFS_NAME = "technicspods_milink_state"
-    private const val SETTINGS_REFRESH_INTERVAL_MS = 3_000L
+    private const val STATUS_REQUEST_MIN_INTERVAL_MS = 1_000L
     private val knownOppoAddresses = linkedSetOf<String>()
     private val batteryViews = WeakHashMap<Any, BluetoothDevice>()
     private val headsetFragments = WeakHashMap<Any, Boolean>()
@@ -36,19 +35,7 @@ object SettingsHeadsetHook : HookContext() {
     private var proxySetCommonCommandCalls = 0
     private var proxyGetDeviceConfigCalls = 0
     private var proxyGetCommonConfigCalls = 0
-    private val refreshHandler = Handler(Looper.getMainLooper())
-    private var refreshLoopStarted = false
-    private val refreshRunnable = object : Runnable {
-        override fun run() {
-            if (headsetFragments.keys.any { isOppoFragment(it) }) {
-                requestBluetoothStatus("settings-periodic")
-                refreshHandler.postDelayed(this, SETTINGS_REFRESH_INTERVAL_MS)
-            } else {
-                refreshLoopStarted = false
-                Log.d(TAG, "settings periodic refresh stopped: no active fragment")
-            }
-        }
-    }
+    private var lastStatusRequestAtMs = 0L
 
     override fun onHook() {
         hookActivityEntry()
@@ -229,8 +216,8 @@ object SettingsHeadsetHook : HookContext() {
                 if (!isOppoPod(device)) return@hookBefore
                 val oppoMode = mode(args) ?: return@hookBefore
                 currentAnc = oppoMode
+                saveState(context)
                 sendOppoAnc(oppoMode)
-                sendSettingsAncChanged(oppoMode)
                 this.result = null
                 Log.d(TAG, "$methodName proxy command handled address=${device?.address} oppoMode=$oppoMode")
             }
@@ -299,7 +286,6 @@ object SettingsHeadsetHook : HookContext() {
                 if (!isOppoFragment(instance)) return@hookAfter
                 instance?.let { headsetFragments[it] = true }
                 requestBluetoothStatus("fragment-create")
-                startPeriodicRefresh()
                 injectFragmentStatus(instance)
             }
         }.onFailure { Log.w(TAG, "hook MiuiHeadsetFragment.onCreateView skipped", it) }
@@ -310,7 +296,6 @@ object SettingsHeadsetHook : HookContext() {
                 if (!isOppoFragment(instance)) return@hookAfter
                 instance?.let { headsetFragments[it] = true }
                 requestBluetoothStatus("service-connected")
-                startPeriodicRefresh()
                 injectFragmentStatus(instance)
             }
         }.onFailure { Log.w(TAG, "hook MiuiHeadsetFragment.onServiceConnected skipped", it) }
@@ -356,10 +341,9 @@ object SettingsHeadsetHook : HookContext() {
                 if (!updateDevice) return@hookBefore
                 val oppoMode = mode(args)
                 currentAnc = oppoMode
+                saveState(context)
                 sendOppoAnc(oppoMode)
-                sendSettingsAncChanged(oppoMode)
-                runCatching { callMethod(instance, "updateAncUi", settingsAncLevel(), false) }
-                injectFragmentStatus(instance)
+                updateFragmentAnc(instance)
                 result = null
                 Log.d(TAG, "MiuiHeadsetFragment.$methodName handled oppoMode=$oppoMode")
             }
@@ -390,7 +374,6 @@ object SettingsHeadsetHook : HookContext() {
                         currentAddress?.let { knownOppoAddresses.add(it.uppercase()) }
                         saveState(context)
                         updateBatteryViews()
-                        updateFragments()
                     }
                     TechnicsPodsAction.ACTION_PODS_ANC_CHANGED -> {
                         currentAddress = intent.getStringExtra("address") ?: currentAddress
@@ -404,27 +387,22 @@ object SettingsHeadsetHook : HookContext() {
             }
         }, filter, Context.RECEIVER_EXPORTED)
         receiverRegistered = true
-        requestBluetoothStatus("receiver-register")
         Log.d(TAG, "registered status receiver context=$context")
     }
 
     private fun requestBluetoothStatus(reason: String) {
         val ctx = context ?: return
-        listOf(TechnicsPodsAction.ACTION_PODS_UI_INIT, TechnicsPodsAction.ACTION_REFRESH_STATUS).forEach { action ->
-            ctx.sendBroadcast(Intent(action).apply {
-                setPackage("com.android.bluetooth")
-                addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-            })
+        val now = SystemClock.elapsedRealtime()
+        if (lastStatusRequestAtMs != 0L && now - lastStatusRequestAtMs < STATUS_REQUEST_MIN_INTERVAL_MS) {
+            Log.d(TAG, "skipped duplicate bluetooth status request reason=$reason")
+            return
         }
+        lastStatusRequestAtMs = now
+        ctx.sendBroadcast(Intent(TechnicsPodsAction.ACTION_REFRESH_STATUS).apply {
+            setPackage("com.android.bluetooth")
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+        })
         Log.d(TAG, "requested bluetooth status reason=$reason")
-    }
-
-    private fun startPeriodicRefresh() {
-        if (refreshLoopStarted) return
-        refreshLoopStarted = true
-        refreshHandler.removeCallbacks(refreshRunnable)
-        refreshHandler.postDelayed(refreshRunnable, SETTINGS_REFRESH_INTERVAL_MS)
-        Log.d(TAG, "settings periodic refresh started")
     }
 
     private fun updateBatteryViews() {
@@ -443,9 +421,14 @@ object SettingsHeadsetHook : HookContext() {
     private fun updateFragments() {
         headsetFragments.keys.toList().forEach { fragment ->
             if (isOppoFragment(fragment)) {
-                injectFragmentStatus(fragment)
+                updateFragmentAnc(fragment)
             }
         }
+    }
+
+    private fun updateFragmentAnc(fragment: Any?) {
+        runCatching { callMethod(fragment, "updateAncUi", settingsAncLevel(), false) }
+            .onFailure { Log.w(TAG, "update fragment ANC failed", it) }
     }
 
     private fun injectFragmentStatus(fragment: Any?) {
@@ -527,7 +510,6 @@ object SettingsHeadsetHook : HookContext() {
     }
 
     private fun settingsBatteryValues(): List<Int> {
-        loadState()
         return listOf(
             batteryValue(currentBattery.left),
             batteryValue(currentBattery.right),
@@ -542,7 +524,6 @@ object SettingsHeadsetHook : HookContext() {
     }
 
     private fun settingsAncMode(): String {
-        loadState()
         return when (currentAnc) {
             2 -> "1"
             3 -> "2"
@@ -551,7 +532,6 @@ object SettingsHeadsetHook : HookContext() {
     }
 
     private fun settingsAncLevel(): String {
-        loadState()
         return when (currentAnc) {
             2 -> "0100"
             3 -> "0200"
@@ -600,15 +580,6 @@ object SettingsHeadsetHook : HookContext() {
         ctx.sendBroadcast(Intent(TechnicsPodsAction.ACTION_ANC_SELECT).apply {
             putExtra("status", mode)
             setPackage("com.android.bluetooth")
-            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-        })
-    }
-
-    private fun sendSettingsAncChanged(mode: Int) {
-        val ctx = context ?: return
-        ctx.sendBroadcast(Intent(TechnicsPodsAction.ACTION_PODS_ANC_CHANGED).apply {
-            putExtra("status", mode)
-            setPackage("com.android.settings")
             addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
         })
     }

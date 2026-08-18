@@ -14,6 +14,7 @@ import android.media.AudioManager
 import android.media.MediaRoute2Info
 import android.media.MediaRouter2
 import android.media.RouteDiscoveryPreference
+import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,9 +40,12 @@ object RfcommController {
     private const val TAG = "TechnicsPods-RfcommController"
     private const val BATTERY_POLL_INTERVAL_MS = 30_000L
     private const val INITIAL_TOAST_SINGLE_EAR_GRACE_MS = 350L
+    private const val ANC_MODE_SETTLE_GUARD_MS = 2_000L
+    private const val ANC_MODE_CONFIRM_DELAY_MS = 200L
 
     // Basic Objects
     private val rfcommLock = Any()
+    private val ancStateLock = Any()
     private var socket: BluetoothSocket? = null
     private var mContext: Context? = null
     lateinit var mDevice: BluetoothDevice
@@ -63,6 +67,9 @@ object RfcommController {
     private var lastTempBatt = 0
     lateinit var currentBatteryParams: BatteryParams
     private var currentAnc: Int = 1
+    private var currentAncSynced: Boolean = false
+    private var guardedAncMode: Int? = null
+    private var guardedAncModeUntilMs: Long = 0L
     private var currentNoiseCancelLevel: Int = TechnicsPodsPrefsKey.DEFAULT_NOISE_CANCEL_LEVEL
     private var currentTransparencyLevel: Int = TechnicsPodsPrefsKey.DEFAULT_TRANSPARENCY_LEVEL
     private var currentGameMode: Boolean = false
@@ -162,7 +169,9 @@ object RfcommController {
                 }
                 if (::currentBatteryParams.isInitialized)
                     changeUIBatteryStatus(currentBatteryParams)
-                changeUIAncStatus(currentAnc)
+                if (currentAncSynced) {
+                    changeUIAncStatus(currentAnc)
+                }
                 changeUIAncLevelStatus()
                 changeUIGameModeStatus(currentGameMode)
                 Intent(TechnicsPodsAction.ACTION_PODS_CONNECTED).apply {
@@ -640,7 +649,13 @@ object RfcommController {
                     val bytesRead = inputStream.read(buffer)
                     if (bytesRead > 0) {
                         framer.append(buffer, bytesRead).forEach { packet ->
-                            handleTechnicsPacket(packet)
+                            try {
+                                handleTechnicsPacket(packet)
+                            } catch (e: Exception) {
+                                // This controller runs inside com.android.bluetooth. Never let a
+                                // malformed packet or status update crash the host process.
+                                Log.e(TAG, "Failed to handle Technics packet", e)
+                            }
                         }
                     } else if (bytesRead == -1) {
                         Log.d(TAG, "RFCOMM stream ended")
@@ -708,6 +723,11 @@ object RfcommController {
         pendingConnectionToastJob = null
         lastKnownCaseBattery = 0
         lastKnownCaseCharging = false
+        currentAncSynced = false
+        synchronized(ancStateLock) {
+            guardedAncMode = null
+            guardedAncModeUntilMs = 0L
+        }
         cachedDeviceName = ""
         mContext = null
         MediaControl.mContext = null
@@ -766,8 +786,38 @@ object RfcommController {
             changeUIAncLevelStatus()
         }
         result.mode?.let {
+            if (!shouldAcceptAncMode(it)) {
+                Log.d(TAG, "Ignored stale ANC mode during transition: received=$it target=${guardedAncMode()}")
+                return@let
+            }
+            val changed = !currentAncSynced || currentAnc != it
             currentAnc = it
-            changeUIAncStatus(it)
+            currentAncSynced = true
+            if (changed) {
+                changeUIAncStatus(it)
+            }
+        }
+    }
+
+    private fun guardAncMode(mode: Int) {
+        synchronized(ancStateLock) {
+            guardedAncMode = mode
+            guardedAncModeUntilMs = SystemClock.elapsedRealtime() + ANC_MODE_SETTLE_GUARD_MS
+        }
+    }
+
+    private fun guardedAncMode(): Int? = synchronized(ancStateLock) { guardedAncMode }
+
+    private fun shouldAcceptAncMode(mode: Int): Boolean {
+        return synchronized(ancStateLock) {
+            val target = guardedAncMode ?: return@synchronized true
+            if (SystemClock.elapsedRealtime() >= guardedAncModeUntilMs) {
+                guardedAncMode = null
+                guardedAncModeUntilMs = 0L
+                true
+            } else {
+                mode == target
+            }
         }
     }
 
@@ -785,7 +835,9 @@ object RfcommController {
     fun setANCMode(mode: Int) {
         Log.d(TAG, "setANCMode: $mode")
         if (mode !in 1..4) return
+        guardAncMode(mode)
         currentAnc = mode
+        currentAncSynced = true
         changeUIAncStatus(mode)
         CoroutineScope(Dispatchers.IO).launch {
             val packets = TechnicsPackets.setAncModeSequence(
@@ -800,6 +852,7 @@ object RfcommController {
                 }
                 delay(80)
             }
+            delay(ANC_MODE_CONFIRM_DELAY_MS)
             sendAncStatusQueryPackets(allowReconnect = false)
         }
     }
@@ -808,13 +861,6 @@ object RfcommController {
         currentNoiseCancelLevel = noiseCancelLevel.coerceIn(0, 100)
         currentTransparencyLevel = transparencyLevel.coerceIn(0, 100)
         changeUIAncLevelStatus()
-
-        if (::mPrefs.isInitialized) {
-            mPrefs.edit()
-                .putInt(TechnicsPodsPrefsKey.NOISE_CANCEL_LEVEL, currentNoiseCancelLevel)
-                .putInt(TechnicsPodsPrefsKey.TRANSPARENCY_LEVEL, currentTransparencyLevel)
-                .apply()
-        }
 
         CoroutineScope(Dispatchers.IO).launch {
             val packet = when (currentAnc) {
