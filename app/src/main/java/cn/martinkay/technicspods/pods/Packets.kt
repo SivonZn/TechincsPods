@@ -113,7 +113,7 @@ object TechnicsPackets {
             // OppoPods UI mapping: 1=off, 2=noise cancelling, 3=transparency, 4=adaptive.
             1 -> listOf(
                 SET_ADAPTIVE_ANC_OFF,
-                setOutsideControl(OUTSIDE_CTRL_UNSET)
+                setOutsideControl(OUTSIDE_CTRL_UNSET, noiseCancelLevel, ambientLevel)
             )
             2 -> listOf(
                 SET_ADAPTIVE_ANC_OFF,
