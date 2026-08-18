@@ -151,8 +151,20 @@ class AppRfcommController {
 
         val ancResult = TechnicsAncParser.parse(packet)
         if (ancResult != null) {
-            _ancMode.value = intToNoiseControlMode(ancResult)
+            handleAncChanged(ancResult)
             return
+        }
+    }
+
+    private fun handleAncChanged(result: TechnicsAncParser.AncResult) {
+        result.noiseCancelLevel?.let {
+            _noiseCancelLevel.value = it.coerceIn(0, 100)
+        }
+        result.transparencyLevel?.let {
+            _transparencyLevel.value = it.coerceIn(0, 100)
+        }
+        result.mode?.let {
+            _ancMode.value = intToNoiseControlMode(it)
         }
     }
 
@@ -186,6 +198,7 @@ class AppRfcommController {
                 Log.d(TAG, "setANCMode sent step ${index + 1} for $mode")
                 delay(80)
             }
+            sendAncStatusQueryPackets()
         }
     }
 
@@ -206,6 +219,8 @@ class AppRfcommController {
                 NoiseControlMode.OFF -> null
             } ?: return@launch
             sendPacket(packet)
+            delay(80)
+            sendPacket(TechnicsPackets.QUERY_OUTSIDE_CTRL)
         }
     }
 
@@ -232,12 +247,20 @@ class AppRfcommController {
      */
     private fun queryStatus() {
         scope.launch {
+            sendAncStatusQueryPackets()
+            delay(80)
             sendPacket(TechnicsPackets.QUERY_AGENT_BATTERY)
             delay(80)
             sendPacket(TechnicsPackets.QUERY_CLIENT_BATTERY)
             delay(80)
             sendPacket(TechnicsPackets.QUERY_CRADLE_BATTERY)
         }
+    }
+
+    private suspend fun sendAncStatusQueryPackets() {
+        sendPacket(TechnicsPackets.QUERY_OUTSIDE_CTRL)
+        delay(80)
+        sendPacket(TechnicsPackets.QUERY_ADAPTIVE_ANC)
     }
 
     /**

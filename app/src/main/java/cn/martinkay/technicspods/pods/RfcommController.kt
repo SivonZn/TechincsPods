@@ -157,6 +157,9 @@ object RfcommController {
         when (intent.action) {
             TechnicsPodsAction.ACTION_PODS_UI_INIT -> {
                 Log.i(TAG, "UI Init")
+                CoroutineScope(Dispatchers.IO).launch {
+                    sendAncStatusQueryPackets(allowReconnect = true)
+                }
                 if (::currentBatteryParams.isInitialized)
                     changeUIBatteryStatus(currentBatteryParams)
                 changeUIAncStatus(currentAnc)
@@ -671,8 +674,7 @@ object RfcommController {
 
         val ancResult = TechnicsAncParser.parse(packet)
         if (ancResult != null) {
-            currentAnc = ancResult
-            changeUIAncStatus(ancResult)
+            handleAncChanged(ancResult)
             return
         }
 
@@ -753,6 +755,22 @@ object RfcommController {
         Log.d(TAG, "setGameMode ignored: Technics game-mode protocol is not implemented")
     }
 
+    private fun handleAncChanged(result: TechnicsAncParser.AncResult) {
+        result.noiseCancelLevel?.let {
+            currentNoiseCancelLevel = it.coerceIn(0, 100)
+        }
+        result.transparencyLevel?.let {
+            currentTransparencyLevel = it.coerceIn(0, 100)
+        }
+        if (result.noiseCancelLevel != null || result.transparencyLevel != null) {
+            changeUIAncLevelStatus()
+        }
+        result.mode?.let {
+            currentAnc = it
+            changeUIAncStatus(it)
+        }
+    }
+
     fun cycleAnc() {
         // 使用广播同步的缓存值，避免 SharedPreferences 跨进程缓存导致读取过时值
         val next = when (currentAnc) {
@@ -782,6 +800,7 @@ object RfcommController {
                 }
                 delay(80)
             }
+            sendAncStatusQueryPackets(allowReconnect = false)
         }
     }
 
@@ -811,6 +830,12 @@ object RfcommController {
             } ?: return@launch
 
             sendPacketSafe(packet, "set ANC level", true)
+            delay(80)
+            sendPacketSafe(
+                TechnicsPackets.QUERY_OUTSIDE_CTRL,
+                "query outside control after set level",
+                false
+            )
         }
     }
 
@@ -821,11 +846,19 @@ object RfcommController {
     }
 
     private suspend fun sendStatusQueryPackets(allowReconnect: Boolean = false) {
+        sendAncStatusQueryPackets(allowReconnect)
+        delay(80)
         if (!sendPacketSafe(TechnicsPackets.QUERY_AGENT_BATTERY, "query agent battery", allowReconnect)) return
         delay(80)
         if (!sendPacketSafe(TechnicsPackets.QUERY_CLIENT_BATTERY, "query client battery", allowReconnect)) return
         delay(80)
         sendPacketSafe(TechnicsPackets.QUERY_CRADLE_BATTERY, "query cradle battery", allowReconnect)
+    }
+
+    private suspend fun sendAncStatusQueryPackets(allowReconnect: Boolean = false) {
+        if (!sendPacketSafe(TechnicsPackets.QUERY_OUTSIDE_CTRL, "query outside control", allowReconnect)) return
+        delay(80)
+        sendPacketSafe(TechnicsPackets.QUERY_ADAPTIVE_ANC, "query adaptive ANC", allowReconnect)
     }
 
     /**
