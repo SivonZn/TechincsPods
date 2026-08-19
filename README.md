@@ -19,6 +19,7 @@ Based on [HyperPods](https://github.com/Art-Chen/HyperPods) by Art_Chen.
 - **HyperOS Integration** — Focus Island battery popup on connection, optional Super Island-style persistent notification, status bar headset icon
 - **Dark Mode** — Full dark theme support including popup dialog and battery icons
 - **Standalone Mode** — Direct RFCOMM connection when Xposed hooks are unavailable
+- **Optional Launcher Icon** — Hide the desktop icon while keeping LSPosed and notification entry points available
 
 ### Requirements
 
@@ -100,6 +101,7 @@ GPL-3.0
 - **HyperOS 集成** — 连接时焦点岛电量弹窗、可选超级岛样式常驻通知、状态栏耳机图标
 - **深色模式** — 完整深色主题支持，包括弹窗对话框与电池图标
 - **独立模式** — 在 Xposed 钩子不可用时通过 RFCOMM 直连耳机
+- **可隐藏桌面图标** — 隐藏启动器图标后，仍可从 LSPosed 或连接通知进入
 
 ### 系统要求
 

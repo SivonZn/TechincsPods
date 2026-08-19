@@ -42,6 +42,8 @@
     <string name="theme_follow_system">跟随系统</string>
     <string name="theme_light">浅色</string>
     <string name="theme_dark">深色</string>
+    <string name="hide_launcher_icon">隐藏桌面图标</string>
+    <string name="hide_launcher_icon_summary">隐藏后仍可通过 LSPosed 模块页或耳机连接通知打开 TechnicsPods</string>
     <string name="advanced_settings">高级设置</string>
     <string name="project_address">项目地址</string>
     <string name="author">作者</string>

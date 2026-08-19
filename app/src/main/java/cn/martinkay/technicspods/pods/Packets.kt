@@ -259,6 +259,8 @@ object TechnicsAncParser {
 
     data class AncResult(
         val mode: Int? = null,
+        val outsideMode: Int? = null,
+        val adaptiveEnabled: Boolean? = null,
         val noiseCancelLevel: Int? = null,
         val transparencyLevel: Int? = null
     )
@@ -269,11 +271,16 @@ object TechnicsAncParser {
 
         return when (raceId(data)) {
             RACE_ID_GET_ADAPTIVE_ANC -> {
-                if (data.size > 7 && (data[7].toInt() and 0xFF) == ADAPTIVE_ANC_ON) {
-                    AncResult(mode = 4)
-                } else {
-                    null
+                if (data.size <= 7) return null
+                val enabled = when (data[7].toInt() and 0xFF) {
+                    0x00 -> false
+                    ADAPTIVE_ANC_ON -> true
+                    else -> return null
                 }
+                AncResult(
+                    mode = if (enabled) 4 else null,
+                    adaptiveEnabled = enabled
+                )
             }
             RACE_ID_GET_OUTSIDE_CTRL -> {
                 if (data.size < 10) return null
@@ -286,6 +293,7 @@ object TechnicsAncParser {
                 }
                 AncResult(
                     mode = mode,
+                    outsideMode = mode,
                     noiseCancelLevel = (data[8].toInt() and 0xFF).coerceIn(0, 100),
                     transparencyLevel = (data[9].toInt() and 0xFF).coerceIn(0, 100)
                 )

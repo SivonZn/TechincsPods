@@ -12,10 +12,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import cn.martinkay.technicspods.ui.App
+import cn.martinkay.technicspods.utils.LauncherIconManager
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        LauncherIconManager.sync(this)
 
         setContent {
             val prefs = remember { getSharedPreferences("technicspods_settings", Context.MODE_PRIVATE) }

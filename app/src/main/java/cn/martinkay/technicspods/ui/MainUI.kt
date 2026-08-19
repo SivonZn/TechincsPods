@@ -51,6 +51,7 @@ import cn.martinkay.technicspods.pods.AppRfcommController
 import cn.martinkay.technicspods.pods.GameModeImplementation
 import cn.martinkay.technicspods.pods.NoiseControlMode
 import cn.martinkay.technicspods.pods.RfcommConnectionMethod
+import cn.martinkay.technicspods.utils.LauncherIconManager
 import cn.martinkay.technicspods.utils.miuiStrongToast.data.BatteryParams
 import cn.martinkay.technicspods.utils.miuiStrongToast.data.NotificationSettings
 import cn.martinkay.technicspods.utils.miuiStrongToast.data.TechnicsPodsAction
@@ -93,6 +94,9 @@ fun MainUI(
     val gameMode = remember { mutableStateOf(false) }
 
     val prefs = remember { context.getSharedPreferences("technicspods_settings", Context.MODE_PRIVATE) }
+    val hideLauncherIcon = remember {
+        mutableStateOf(LauncherIconManager.isHidden(context))
+    }
     val openTechnics = remember { mutableStateOf(prefs.getBoolean("open_heytap", false)) }
     // Adaptive模式偏好设置（持久化存储），默认开启
     val adaptiveMode = remember { mutableStateOf(prefs.getBoolean("adaptive_mode", true)) }
@@ -238,6 +242,11 @@ fun MainUI(
 
                     TechnicsPodsAction.ACTION_PODS_CONNECTED -> {
                         val deviceName = p1.getStringExtra("device_name")
+                        if (appController.connectionState.value !=
+                            AppRfcommController.ConnectionState.DISCONNECTED
+                        ) {
+                            appController.disconnect()
+                        }
                         mainTitle.value = deviceName ?: ""
                         hookConnected.value = true
                         Log.i("TechnicsPods", "pod connected via hook: $deviceName")
@@ -246,7 +255,11 @@ fun MainUI(
                     TechnicsPodsAction.ACTION_PODS_DISCONNECTED -> {
                         mainTitle.value = ""
                         hookConnected.value = false
-                        if (p0 is MainActivity) {
+                        if (
+                            appController.connectionState.value !=
+                            AppRfcommController.ConnectionState.CONNECTED &&
+                            p0 is MainActivity
+                        ) {
                             p0.finish()
                         }
                     }
@@ -465,7 +478,9 @@ fun MainUI(
                             adaptiveModeEnabled = adaptiveMode.value
                         )
                         "connecting" -> Box(Modifier.padding(padding).fillMaxSize()) { ConnectingPage() }
-                        "error" -> Box(Modifier.padding(padding).fillMaxSize()) { ErrorPage(onRetry = { appController.disconnect() }) }
+                        "error" -> Box(Modifier.padding(padding).fillMaxSize()) {
+                            ErrorPage(onRetry = { appController.retryConnection() })
+                        }
                         else -> Box(Modifier.padding(padding).fillMaxSize()) { DevicePickerPage(onDeviceSelected = { onDeviceSelected(it) }) }
                     }
                 }
@@ -500,6 +515,12 @@ fun MainUI(
                     contentPadding = padding,
                     themeMode = themeMode,
                     onThemeModeChange = onThemeModeChange,
+                    hideLauncherIcon = hideLauncherIcon,
+                    onHideLauncherIconChange = {
+                        if (LauncherIconManager.setHidden(context, it)) {
+                            hideLauncherIcon.value = it
+                        }
+                    },
                     adaptiveMode = adaptiveMode,
                     onAdaptiveModeChange = {
                         adaptiveMode.value = it

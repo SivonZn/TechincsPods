@@ -3,7 +3,14 @@ package cn.martinkay.technicspods.pods
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
+import android.os.SystemClock
 import android.util.Log
+import cn.martinkay.technicspods.BuildConfig
+import cn.martinkay.technicspods.utils.miuiStrongToast.data.BatteryParams
+import cn.martinkay.technicspods.utils.miuiStrongToast.data.PodParams
+import java.io.IOException
+import java.io.InputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -12,11 +19,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import cn.martinkay.technicspods.BuildConfig
-import cn.martinkay.technicspods.utils.miuiStrongToast.data.BatteryParams
-import cn.martinkay.technicspods.utils.miuiStrongToast.data.PodParams
-import java.io.IOException
-import java.io.InputStream
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Standalone RFCOMM controller for direct use from the app process.
@@ -27,17 +31,49 @@ class AppRfcommController {
     companion object {
         private const val TAG = "TechnicsPods-AppRfcomm"
         private const val BATTERY_POLL_INTERVAL_MS = 30_000L
+        private const val PACKET_STEP_DELAY_MS = 80L
+        private const val ANC_MODE_CONFIRM_DELAY_MS = 200L
+        private const val ANC_RESPONSE_SETTLE_MS = 300L
+        private const val ANC_MODE_SETTLE_GUARD_MS = 2_000L
     }
 
     enum class ConnectionState {
         DISCONNECTED, CONNECTING, CONNECTED, ERROR
     }
 
+    private data class PendingAncSync(
+        val generation: Long,
+        var outsideMode: NoiseControlMode? = null,
+        var adaptiveEnabled: Boolean? = null
+    )
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val socketLock = Any()
+    private val ancStateLock = Any()
+    private val operationMutex = Mutex()
+
     private var socket: BluetoothSocket? = null
+    private var connectionGeneration = 0L
+    @Volatile
     private var isConnected = false
     private var gameModeImplementation = GameModeImplementation.STANDARD
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var lastDevice: BluetoothDevice? = null
+    private var lastConnectionMethod = RfcommConnectionMethod.UUID
+
+    private var connectJob: Job? = null
     private var batteryPollJob: Job? = null
+    private var statusQueryJob: Job? = null
+    private var ancModeJob: Job? = null
+    private var ancLevelJob: Job? = null
+
+    private var ancSyncGeneration = 0L
+    private var pendingAncSync: PendingAncSync? = null
+    private var lastOutsideMode: NoiseControlMode? = null
+    private var lastAdaptiveEnabled: Boolean? = null
+    @Volatile
+    private var currentAncSynced = false
+    private var guardedAncMode: NoiseControlMode? = null
+    private var guardedAncModeUntilMs = 0L
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState
@@ -67,30 +103,52 @@ class AppRfcommController {
     ) {
         if (_connectionState.value == ConnectionState.CONNECTING) return
 
+        closeConnection(resetUi = false)
         this.gameModeImplementation = gameModeImplementation
+        lastDevice = device
+        lastConnectionMethod = connectionMethod
         _deviceName.value = device.name ?: device.address
         _connectionState.value = ConnectionState.CONNECTING
-        batteryPollJob?.cancel()
 
-        scope.launch {
+        val generation = synchronized(socketLock) {
+            connectionGeneration += 1
+            connectionGeneration
+        }
+        connectJob = scope.launch {
             try {
                 delay(300)
-                socket = TechnicsRfcommSocketFactory.connect(device, TAG, connectionMethod)
+                val connectedSocket = TechnicsRfcommSocketFactory.connect(
+                    device,
+                    TAG,
+                    connectionMethod
+                )
+                val accepted = synchronized(socketLock) {
+                    if (connectionGeneration != generation) {
+                        false
+                    } else {
+                        socket = connectedSocket
+                        isConnected = true
+                        true
+                    }
+                }
+                if (!accepted) {
+                    try {
+                        connectedSocket.close()
+                    } catch (_: IOException) {
+                    }
+                    return@launch
+                }
+
                 Log.d(TAG, "RFCOMM connected to ${device.name}")
-                isConnected = true
                 _connectionState.value = ConnectionState.CONNECTED
-
-                startPacketReader(socket!!.inputStream)
-
-                delay(300)
+                startPacketReader(connectedSocket, generation, connectedSocket.inputStream)
                 queryStatus()
-
                 startBatteryPolling()
+            } catch (_: CancellationException) {
+                // An explicit disconnect or a newer connection attempt owns the state now.
             } catch (e: IOException) {
                 Log.e(TAG, "RFCOMM connect failed", e)
-                _connectionState.value = ConnectionState.ERROR
-                isConnected = false
-                batteryPollJob?.cancel()
+                markConnectionFailed(generation)
             }
         }
     }
@@ -105,25 +163,35 @@ class AppRfcommController {
         }
     }
 
-    private fun startPacketReader(inputStream: InputStream) {
+    private fun startPacketReader(
+        readerSocket: BluetoothSocket,
+        generation: Long,
+        inputStream: InputStream
+    ) {
         scope.launch {
             val buffer = ByteArray(1024)
             val framer = TechnicsPacketFramer()
             try {
-                while (isConnected) {
+                while (isActiveSocket(readerSocket, generation)) {
                     val bytesRead = inputStream.read(buffer)
-                    if (bytesRead > 0) {
-                        framer.append(buffer, bytesRead).forEach { packet ->
+                    if (bytesRead <= 0) break
+                    framer.append(buffer, bytesRead).forEach { packet ->
+                        try {
                             handlePacket(packet)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to handle Technics packet", e)
                         }
-                    } else if (bytesRead == -1) {
-                        break
                     }
                 }
             } catch (e: IOException) {
-                if (isConnected) Log.e(TAG, "Read error", e)
+                if (isActiveSocket(readerSocket, generation)) {
+                    Log.e(TAG, "RFCOMM read failed", e)
+                }
             }
-            if (isConnected) disconnect()
+
+            if (isActiveSocket(readerSocket, generation)) {
+                markConnectionLost(readerSocket, generation)
+            }
         }
     }
 
@@ -133,27 +201,29 @@ class AppRfcommController {
             Log.v(TAG, "Received: ${packet.toHexString(HexFormat.UpperCase)}")
         }
 
-        val result = TechnicsBatteryParser.parse(packet)
-        if (result != null) {
-            val current = _batteryParams.value
-            val left = result.left?.let {
-                PodParams(it.level, it.isCharging, true, current.left?.rawStatus ?: 0)
-            } ?: current.left ?: PodParams()
-            val right = result.right?.let {
-                PodParams(it.level, it.isCharging, true, current.right?.rawStatus ?: 0)
-            } ?: current.right ?: PodParams()
-            val case = result.case?.let {
-                PodParams(it.level, it.isCharging, true, current.case?.rawStatus ?: 0)
-            } ?: current.case ?: PodParams()
-            _batteryParams.value = BatteryParams(left, right, case)
+        TechnicsBatteryParser.parse(packet)?.let {
+            handleBatteryChanged(it)
             return
         }
 
-        val ancResult = TechnicsAncParser.parse(packet)
-        if (ancResult != null) {
-            handleAncChanged(ancResult)
+        TechnicsAncParser.parse(packet)?.let {
+            handleAncChanged(it)
             return
         }
+    }
+
+    private fun handleBatteryChanged(result: TechnicsBatteryParser.BatteryResult) {
+        val current = _batteryParams.value
+        val left = result.left?.let {
+            PodParams(it.level, it.isCharging, true, current.left?.rawStatus ?: 0)
+        } ?: current.left ?: PodParams()
+        val right = result.right?.let {
+            PodParams(it.level, it.isCharging, true, current.right?.rawStatus ?: 0)
+        } ?: current.right ?: PodParams()
+        val case = result.case?.let {
+            PodParams(it.level, it.isCharging, true, current.case?.rawStatus ?: 0)
+        } ?: current.case ?: PodParams()
+        _batteryParams.value = BatteryParams(left, right, case)
     }
 
     private fun handleAncChanged(result: TechnicsAncParser.AncResult) {
@@ -163,17 +233,126 @@ class AppRfcommController {
         result.transparencyLevel?.let {
             _transparencyLevel.value = it.coerceIn(0, 100)
         }
-        result.mode?.let {
-            _ancMode.value = intToNoiseControlMode(it)
+
+        val resolvedMode = synchronized(ancStateLock) {
+            result.outsideMode?.let { mode ->
+                intToNoiseControlMode(mode).also {
+                    lastOutsideMode = it
+                    pendingAncSync?.outsideMode = it
+                }
+            }
+            result.adaptiveEnabled?.let { enabled ->
+                lastAdaptiveEnabled = enabled
+                pendingAncSync?.adaptiveEnabled = enabled
+            }
+
+            val pending = pendingAncSync
+            if (pending != null) {
+                val outsideMode = pending.outsideMode
+                val adaptiveEnabled = pending.adaptiveEnabled
+                if (outsideMode != null && adaptiveEnabled != null) {
+                    pendingAncSync = null
+                    resolveAncMode(outsideMode, adaptiveEnabled)
+                } else {
+                    null
+                }
+            } else {
+                val outsideMode = lastOutsideMode
+                val adaptiveEnabled = lastAdaptiveEnabled
+                if (outsideMode != null && adaptiveEnabled != null) {
+                    resolveAncMode(outsideMode, adaptiveEnabled)
+                } else {
+                    null
+                }
+            }
+        }
+        resolvedMode?.let(::publishAncMode)
+    }
+
+    private fun resolveAncMode(
+        outsideMode: NoiseControlMode,
+        adaptiveEnabled: Boolean
+    ): NoiseControlMode {
+        return if (adaptiveEnabled) NoiseControlMode.ADAPTIVE else outsideMode
+    }
+
+    private fun publishAncMode(mode: NoiseControlMode) {
+        if (!shouldAcceptAncMode(mode)) {
+            Log.d(TAG, "Ignored stale ANC mode during transition: received=$mode target=${guardedAncMode()}")
+            return
+        }
+        currentAncSynced = true
+        _ancMode.value = mode
+    }
+
+    private fun beginAncSync(): Long = synchronized(ancStateLock) {
+        ancSyncGeneration += 1
+        pendingAncSync = PendingAncSync(ancSyncGeneration)
+        ancSyncGeneration
+    }
+
+    private fun finishAncSync(generation: Long) {
+        val fallbackMode = synchronized(ancStateLock) {
+            val pending = pendingAncSync?.takeIf { it.generation == generation }
+                ?: return@synchronized null
+            pendingAncSync = null
+            when {
+                pending.outsideMode != null && pending.adaptiveEnabled != null -> {
+                    resolveAncMode(pending.outsideMode!!, pending.adaptiveEnabled!!)
+                }
+                !currentAncSynced && pending.outsideMode != null -> pending.outsideMode
+                pending.adaptiveEnabled == true -> NoiseControlMode.ADAPTIVE
+                pending.adaptiveEnabled == false && lastOutsideMode != null -> lastOutsideMode
+                else -> null
+            }
+        }
+        fallbackMode?.let(::publishAncMode)
+    }
+
+    private fun discardAncSync(generation: Long) {
+        synchronized(ancStateLock) {
+            if (pendingAncSync?.generation == generation) pendingAncSync = null
         }
     }
 
-    private fun sendPacket(packet: ByteArray) {
-        try {
-            socket?.outputStream?.write(packet)
-            socket?.outputStream?.flush()
+    private fun guardAncMode(mode: NoiseControlMode) {
+        synchronized(ancStateLock) {
+            guardedAncMode = mode
+            guardedAncModeUntilMs = SystemClock.elapsedRealtime() + ANC_MODE_SETTLE_GUARD_MS
+        }
+    }
+
+    private fun guardedAncMode(): NoiseControlMode? = synchronized(ancStateLock) {
+        guardedAncMode
+    }
+
+    private fun shouldAcceptAncMode(mode: NoiseControlMode): Boolean {
+        return synchronized(ancStateLock) {
+            val target = guardedAncMode ?: return@synchronized true
+            if (SystemClock.elapsedRealtime() >= guardedAncModeUntilMs) {
+                guardedAncMode = null
+                guardedAncModeUntilMs = 0L
+                true
+            } else {
+                mode == target
+            }
+        }
+    }
+
+    private fun sendPacket(packet: ByteArray): Boolean {
+        val targetSocket = synchronized(socketLock) {
+            socket?.takeIf { isConnected }
+        } ?: return false
+
+        return try {
+            targetSocket.outputStream.write(packet)
+            targetSocket.outputStream.flush()
+            true
         } catch (e: IOException) {
-            Log.e(TAG, "Send failed", e)
+            Log.e(TAG, "RFCOMM send failed", e)
+            val generation = synchronized(socketLock) { connectionGeneration }
+            markConnectionLost(targetSocket, generation)
+            false
         }
     }
 
@@ -187,40 +366,56 @@ class AppRfcommController {
     }
 
     fun setANCMode(mode: NoiseControlMode) {
+        if (!isConnected) return
+
+        guardAncMode(mode)
+        currentAncSynced = true
         _ancMode.value = mode
-        scope.launch {
-            TechnicsPackets.setAncModeSequence(
-                noiseControlModeToInt(mode),
-                _noiseCancelLevel.value,
-                _transparencyLevel.value
-            ).forEachIndexed { index, packet ->
-                sendPacket(packet)
-                Log.d(TAG, "setANCMode sent step ${index + 1} for $mode")
-                delay(80)
+        statusQueryJob?.cancel()
+        ancModeJob?.cancel()
+        ancLevelJob?.cancel()
+        ancModeJob = scope.launch {
+            operationMutex.withLock {
+                val packets = TechnicsPackets.setAncModeSequence(
+                    noiseControlModeToInt(mode),
+                    _noiseCancelLevel.value,
+                    _transparencyLevel.value
+                )
+                packets.forEachIndexed { index, packet ->
+                    if (!sendPacket(packet)) return@withLock
+                    Log.d(TAG, "setANCMode sent step ${index + 1} for $mode")
+                    delay(PACKET_STEP_DELAY_MS)
+                }
+                delay(ANC_MODE_CONFIRM_DELAY_MS)
+                sendAncStatusQueryPackets()
             }
-            sendAncStatusQueryPackets()
         }
     }
 
     fun setAncLevels(noiseCancelLevel: Int, transparencyLevel: Int) {
         _noiseCancelLevel.value = noiseCancelLevel.coerceIn(0, 100)
         _transparencyLevel.value = transparencyLevel.coerceIn(0, 100)
-        scope.launch {
-            val packet = when (_ancMode.value) {
-                NoiseControlMode.NOISE_CANCELLATION,
-                NoiseControlMode.ADAPTIVE -> TechnicsPackets.setNoiseCancelLevel(
-                    _noiseCancelLevel.value,
-                    _transparencyLevel.value
-                )
-                NoiseControlMode.TRANSPARENCY -> TechnicsPackets.setTransparencyLevel(
-                    _noiseCancelLevel.value,
-                    _transparencyLevel.value
-                )
-                NoiseControlMode.OFF -> null
-            } ?: return@launch
-            sendPacket(packet)
-            delay(80)
-            sendPacket(TechnicsPackets.QUERY_OUTSIDE_CTRL)
+        if (!isConnected) return
+
+        ancLevelJob?.cancel()
+        ancLevelJob = scope.launch {
+            operationMutex.withLock {
+                val packet = when (_ancMode.value) {
+                    NoiseControlMode.NOISE_CANCELLATION,
+                    NoiseControlMode.ADAPTIVE -> TechnicsPackets.setNoiseCancelLevel(
+                        _noiseCancelLevel.value,
+                        _transparencyLevel.value
+                    )
+                    NoiseControlMode.TRANSPARENCY -> TechnicsPackets.setTransparencyLevel(
+                        _noiseCancelLevel.value,
+                        _transparencyLevel.value
+                    )
+                    NoiseControlMode.OFF -> null
+                } ?: return@withLock
+                if (!sendPacket(packet)) return@withLock
+                delay(PACKET_STEP_DELAY_MS)
+                sendAncStatusQueryPackets()
+            }
         }
     }
 
@@ -242,41 +437,129 @@ class AppRfcommController {
         }
     }
 
-    /**
-     * Technics battery query strategy: agent side, client side, then cradle.
-     */
     private fun queryStatus() {
-        scope.launch {
-            sendAncStatusQueryPackets()
-            delay(80)
-            sendPacket(TechnicsPackets.QUERY_AGENT_BATTERY)
-            delay(80)
-            sendPacket(TechnicsPackets.QUERY_CLIENT_BATTERY)
-            delay(80)
-            sendPacket(TechnicsPackets.QUERY_CRADLE_BATTERY)
+        if (!isConnected || statusQueryJob?.isActive == true) return
+        statusQueryJob = scope.launch {
+            operationMutex.withLock {
+                if (!isConnected) return@withLock
+                if (!sendAncStatusQueryPackets()) return@withLock
+                if (!sendPacket(TechnicsPackets.QUERY_AGENT_BATTERY)) return@withLock
+                delay(PACKET_STEP_DELAY_MS)
+                if (!sendPacket(TechnicsPackets.QUERY_CLIENT_BATTERY)) return@withLock
+                delay(PACKET_STEP_DELAY_MS)
+                sendPacket(TechnicsPackets.QUERY_CRADLE_BATTERY)
+            }
         }
     }
 
-    private suspend fun sendAncStatusQueryPackets() {
-        sendPacket(TechnicsPackets.QUERY_OUTSIDE_CTRL)
-        delay(80)
-        sendPacket(TechnicsPackets.QUERY_ADAPTIVE_ANC)
+    private suspend fun sendAncStatusQueryPackets(): Boolean {
+        val generation = beginAncSync()
+        var completed = false
+        try {
+            if (!sendPacket(TechnicsPackets.QUERY_OUTSIDE_CTRL)) return false
+            delay(PACKET_STEP_DELAY_MS)
+            if (!sendPacket(TechnicsPackets.QUERY_ADAPTIVE_ANC)) return false
+            delay(ANC_RESPONSE_SETTLE_MS)
+            completed = true
+            finishAncSync(generation)
+            return true
+        } finally {
+            if (!completed) discardAncSync(generation)
+        }
     }
 
-    /**
-     * Public method for UI refresh button.
-     */
     fun refreshStatus() {
-        if (!isConnected) return
         queryStatus()
     }
 
+    fun retryConnection() {
+        val device = lastDevice ?: return
+        connect(device, lastConnectionMethod, gameModeImplementation)
+    }
+
     fun disconnect() {
-        isConnected = false
-        batteryPollJob?.cancel()
-        try { socket?.close() } catch (_: IOException) {}
-        socket = null
+        closeConnection(resetUi = true)
         _connectionState.value = ConnectionState.DISCONNECTED
+    }
+
+    private fun closeConnection(resetUi: Boolean) {
+        connectJob?.cancel()
+        batteryPollJob?.cancel()
+        statusQueryJob?.cancel()
+        ancModeJob?.cancel()
+        ancLevelJob?.cancel()
+        synchronized(socketLock) {
+            connectionGeneration += 1
+            isConnected = false
+            try {
+                socket?.close()
+            } catch (_: IOException) {
+            }
+            socket = null
+        }
+        resetAncSyncState()
+        if (resetUi) resetUiState()
+    }
+
+    private fun markConnectionFailed(generation: Long) {
+        val active = synchronized(socketLock) {
+            if (connectionGeneration != generation) {
+                false
+            } else {
+                isConnected = false
+                socket = null
+                true
+            }
+        }
+        if (active) {
+            resetAncSyncState()
+            _connectionState.value = ConnectionState.ERROR
+        }
+    }
+
+    private fun markConnectionLost(readerSocket: BluetoothSocket, generation: Long) {
+        val active = synchronized(socketLock) {
+            if (connectionGeneration != generation || socket !== readerSocket) {
+                false
+            } else {
+                connectionGeneration += 1
+                isConnected = false
+                try {
+                    readerSocket.close()
+                } catch (_: IOException) {
+                }
+                socket = null
+                true
+            }
+        }
+        if (active) {
+            batteryPollJob?.cancel()
+            statusQueryJob?.cancel()
+            ancModeJob?.cancel()
+            ancLevelJob?.cancel()
+            resetAncSyncState()
+            _connectionState.value = ConnectionState.ERROR
+        }
+    }
+
+    private fun isActiveSocket(readerSocket: BluetoothSocket, generation: Long): Boolean {
+        return synchronized(socketLock) {
+            isConnected && connectionGeneration == generation && socket === readerSocket
+        }
+    }
+
+    private fun resetAncSyncState() {
+        synchronized(ancStateLock) {
+            pendingAncSync = null
+            lastOutsideMode = null
+            lastAdaptiveEnabled = null
+            currentAncSynced = false
+            guardedAncMode = null
+            guardedAncModeUntilMs = 0L
+        }
+    }
+
+    private fun resetUiState() {
         _batteryParams.value = BatteryParams()
         _ancMode.value = NoiseControlMode.OFF
         _noiseCancelLevel.value = 100

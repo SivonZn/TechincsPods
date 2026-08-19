@@ -98,6 +98,8 @@ fun SettingsPage(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     themeMode: MutableState<Int> = mutableStateOf(0),
     onThemeModeChange: (Int) -> Unit = {},
+    hideLauncherIcon: MutableState<Boolean> = mutableStateOf(false),
+    onHideLauncherIconChange: (Boolean) -> Unit = {},
     adaptiveMode: MutableState<Boolean> = mutableStateOf(true),
     onAdaptiveModeChange: (Boolean) -> Unit = {},
     showConnectionBatteryIsland: MutableState<Boolean> =
@@ -135,6 +137,12 @@ fun SettingsPage(
                     items = themeOptions,
                     selectedIndex = themeMode.value,
                     onSelectedIndexChange = { onThemeModeChange(it) }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.hide_launcher_icon),
+                    summary = stringResource(R.string.hide_launcher_icon_summary),
+                    checked = hideLauncherIcon.value,
+                    onCheckedChange = { onHideLauncherIconChange(it) }
                 )
             }
         }

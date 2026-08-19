@@ -10,6 +10,7 @@ object TechnicsPodsPrefsKey {
     const val NOTIFICATION_ISLAND_STYLE = "notification_island_style"
     const val NOISE_CANCEL_LEVEL = "noise_cancel_level"
     const val TRANSPARENCY_LEVEL = "transparency_level"
+    const val HIDE_LAUNCHER_ICON = "hide_launcher_icon"
 
     const val DEFAULT_SHOW_CONNECTION_BATTERY_ISLAND = true
     const val DEFAULT_SHOW_CONNECTION_POPUP = false

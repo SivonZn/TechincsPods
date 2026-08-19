@@ -41,6 +41,8 @@
     <string name="theme_follow_system">Follow System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
+    <string name="hide_launcher_icon">Hide launcher icon</string>
+    <string name="hide_launcher_icon_summary">You can still open TechnicsPods from LSPosed or the connection notification</string>
     <string name="advanced_settings">Advanced settings</string>
     <string name="project_address">Project address</string>
     <string name="author">Author</string>

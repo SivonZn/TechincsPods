@@ -39,6 +39,7 @@ import cn.martinkay.technicspods.ui.components.TechnicsDeviceBatteryStatus
 import cn.martinkay.technicspods.utils.miuiStrongToast.data.BatteryParams
 import cn.martinkay.technicspods.utils.miuiStrongToast.data.TechnicsPodsAction
 import cn.martinkay.technicspods.utils.miuiStrongToast.data.TechnicsPodsPrefsKey
+import cn.martinkay.technicspods.utils.LauncherIconManager
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -61,7 +62,10 @@ class PopupActivity : ComponentActivity() {
                 PopupContent(
                     onMore = {
                         val prefs = getSharedPreferences("technicspods_settings", Context.MODE_PRIVATE)
-                        if (prefs.getBoolean("open_heytap", false)) {
+                        if (
+                            prefs.getBoolean("open_heytap", false) &&
+                            !LauncherIconManager.isHidden(this@PopupActivity)
+                        ) {
                             val intent = packageManager.getLaunchIntentForPackage("com.panasonic.technicsaudioconnect")
                             if (intent != null) {
                                 startActivity(intent)
